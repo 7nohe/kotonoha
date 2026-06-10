@@ -23,5 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 
-# Claude Code session files
-.claude/
+# Claude Code session files (but keep committed project skills)
+.claude/*
+!.claude/skills/
