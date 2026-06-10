@@ -10,8 +10,9 @@ permissions:
 
 jobs:
   release:
-    # Apple Silicon runner (the app is macOS/arm64 only: Metal, ScreenCaptureKit, NSPanel)
-    runs-on: macos-15
+    # Apple Silicon runner (the app is macOS/arm64 only: Metal, ScreenCaptureKit, NSPanel).
+    # Needs a recent Xcode SDK: the apple-metal Swift bridge uses current Metal APIs.
+    runs-on: macos-26
     timeout-minutes: 60
 
     steps:
