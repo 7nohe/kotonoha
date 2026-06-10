@@ -32,37 +32,47 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Install App Store Connect API key for notarization
-        # secrets are not allowed in step `if:` conditions — guard inside the script
+      # Optional code signing & notarization. Secrets that are unset must NOT be
+      # exported at all: tauri-bundler treats a present-but-empty APPLE_CERTIFICATE
+      # as a signing request and fails importing the empty certificate.
+      # Without secrets the build falls back to ad-hoc signing (users right-click → Open).
+      - name: Configure signing & notarization env
         env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          if [ -n "$APPLE_API_KEY_BASE64" ]; then
+          export_if_set() {
+            local name="$1" value="${!1:-}"
+            if [ -n "$value" ]; then
+              {
+                echo "$name<<__GH_ENV_EOF__"
+                echo "$value"
+                echo "__GH_ENV_EOF__"
+              } >> "$GITHUB_ENV"
+              echo "exported $name"
+            fi
+          }
+          for v in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY \
+                   APPLE_API_ISSUER APPLE_API_KEY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            export_if_set "$v"
+          done
+          if [ -n "${APPLE_API_KEY_BASE64:-}" ]; then
             echo "$APPLE_API_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
-            echo "App Store Connect API key installed"
-          else
-            echo "No API key secret set — skipping"
+            echo "APPLE_API_KEY_PATH=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_ENV"
+            echo "exported APPLE_API_KEY_PATH"
           fi
 
       - name: Build and create draft release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Optional code signing & notarization — leave the secrets unset to
-          # build ad-hoc signed artifacts (users must right-click → Open).
-          # APPLE_CERTIFICATE: base64-encoded .p12 (Developer ID Application)
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          # Notarization — either method works; the API key is preferred for CI
-          # (a) App Store Connect API key (recommended, 2FA-independent)
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_KEY_PATH: ${{ secrets.APPLE_API_KEY != '' && format('{0}/AuthKey.p8', runner.temp) || '' }}
-          # (b) Apple ID + app-specific password
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "kotonoha ${{ github.ref_name }}"
