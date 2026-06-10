@@ -1,8 +1,8 @@
 [package]
 name = "kotonoha"
 version = "0.1.0"
-description = "ローカル完結リアルタイム文字起こし・翻訳オーバーレイ"
-authors = ["daiki"]
+description = "Fully-local realtime transcription & translation overlay for macOS"
+authors = ["7nohe"]
 edition = "2021"
 
 [lib]
