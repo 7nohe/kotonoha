@@ -1,6 +1,6 @@
 # kotonoha 🍃
 
-[日本語](./README.ja.md)
+[日本語](./README.ja.md) | [Developer docs](./docs/DEVELOPMENT.md)
 
 A fully-local realtime transcription & translation overlay for macOS.
 
@@ -8,100 +8,63 @@ Launch kotonoha alongside any meeting tool and it shows floating captions: realt
 
 ## Features
 
-- **Floating caption overlay** — a non-activating panel that stays above every app (including full-screen meeting apps) without stealing focus. Draggable, click-through mode, auto-fades when nobody is speaking
-- **Realtime transcription** — whisper.cpp (large-v3-turbo) with Metal acceleration, Silero VAD utterance segmentation, partial results within ~2s
-- **Live translation** — English speech is translated to Japanese via a local Ollama model, streamed token-by-token under the original text
+- **Floating caption overlay** — stays above every app (including full-screen meeting apps) without stealing focus. Draggable, click-through mode, auto-fades when nobody is speaking
+- **Realtime transcription** — whisper.cpp with Metal acceleration; partial captions appear within ~2 seconds
+- **Live translation** — English speech is translated to Japanese via a local Ollama model, streamed under the original text
 - **Dual audio sources** — system audio (the other participants) and your microphone, transcribed in parallel
-- **Meeting minutes export** — dump the session transcript to Markdown in `~/Downloads`, optionally with an Ollama-generated summary (key points / decisions / TODOs)
+- **Meeting minutes export** — dump the session transcript to Markdown in `~/Downloads`, optionally with an AI-generated summary (key points / decisions / TODOs)
 - **Fully local** — no cloud, no API keys, no telemetry
 
-## Architecture
+## Requirements
 
-- **App**: Tauri 2 + React + TypeScript
-- **STT**: whisper.cpp via [whisper-rs](https://github.com/tazz4843/whisper-rs) (Metal), Silero VAD (whisper.cpp built-in)
-- **Translation / summary**: [Ollama](https://ollama.com) (`localhost:11434`, streaming)
-- **System audio**: Core Audio process taps (macOS 14.4+, no screen-recording permission) with automatic fallback to ScreenCaptureKit
-- **Microphone**: cpal
-- **Overlay**: [tauri-nspanel](https://github.com/ahkohd/tauri-nspanel) non-activating floating panel
+- macOS 13.3 or later, Apple Silicon recommended
+- ~600 MB of disk space for the speech model (downloaded in-app on first launch)
+- [Ollama](https://ollama.com) — optional, needed only for translation and summaries
 
-## Getting started
+## Installation
 
-### Requirements
+Download the latest `.dmg` from [Releases](../../releases) and drag kotonoha to Applications.
 
-- macOS 13.3+ (Apple Silicon recommended; Core Audio tap backend needs 14.4+)
-- Node.js, Rust 1.77.2+, CMake (`brew install cmake`), Xcode Command Line Tools
+> If the build is not notarized, right-click → Open on first launch.
 
-### Build & run
+Building from source is covered in the [developer docs](./docs/DEVELOPMENT.md).
 
-```sh
-npm install
-npm run tauri dev      # development
-npm run tauri build    # release .app (src-tauri/target/release/bundle/macos/)
-```
+## First launch
 
-On first launch an onboarding flow walks you through granting permissions and downloading the speech model in-app.
+An onboarding flow walks you through:
 
-### Ollama (optional, required for translation & summaries)
+1. **Permissions** — microphone (your voice) and system audio capture (the other participants)
+2. **Speech model download** — pick `large-v3-turbo` (recommended) or `base` (lighter)
+3. **Ollama detection** — optional; shown as connected if `ollama serve` is running
+
+Capture starts automatically once setup is complete.
+
+## Using Ollama for translation (optional)
 
 ```sh
-brew install --cask ollama-app   # official app — the brew formula build may
-                                 # ship without llama-server and fail to run
-ollama serve                     # or launch Ollama.app
+brew install --cask ollama-app   # the official app — the plain brew formula
+                                 # may ship without llama-server and fail
 ollama pull qwen2.5:3b-instruct  # small, fast model that translates well
 ```
 
-Switch the language direction to "英語→日本語" (English → Japanese) in Settings and each finalized English utterance is translated in a stream. Transcription keeps working even when Ollama is down.
+Open Settings from the menu-bar icon and switch the language direction to **英語→日本語** (English → Japanese). Each finalized English utterance is then translated in a stream. Transcription keeps working even when Ollama is down. For higher translation quality, pull a larger model (e.g. `qwen3:8b`) and select it in Settings.
 
-## Usage
+## Everyday use
 
-1. Control everything from the menu-bar icon: show/hide overlay, click-through, export minutes, settings, quit
-2. Drag the overlay anywhere; hover to reveal controls (capture toggle, click-through, settings)
-3. Click-through lets you interact with apps beneath the captions (turn it off from the menu bar)
-4. **Headphones recommended** — with speakers your mic also picks up the other participants
+- Everything is controlled from the **menu-bar icon**: show/hide overlay, click-through, export minutes, settings, quit
+- **Drag** the overlay anywhere; **hover** to reveal controls (capture toggle, click-through, settings)
+- **Click-through** lets you interact with apps beneath the captions; turn it off from the menu bar
+- **Export minutes** writes a Markdown transcript to `~/Downloads`; "with summary" adds key points / decisions / TODOs generated by Ollama
+- **Headphones recommended** — with speakers, your microphone also picks up the other participants and captions duplicate
 
-## System audio capture
+## Privacy & permissions
 
-1. **Core Audio process tap** (macOS 14.4+) — uses the lightweight "System Audio Recording" permission instead of Screen Recording; tried first
-2. **ScreenCaptureKit** — automatic fallback when the tap is unavailable (macOS 13.x, permission denied, …)
+All audio processing happens on your Mac. The app asks for:
 
-The chosen backend is logged as `[audio] system backend: ...`.
+- **Microphone** — to transcribe your own speech
+- **System Audio Recording** (macOS 14.4+) or **Screen Recording** (macOS 13.x fallback) — to transcribe the other participants. Only audio is processed; no video is captured
 
-## Code signing (development)
-
-`tauri.conf.json` ships with `"signingIdentity": "-"` (ad-hoc) so the project builds out of the box. Note that macOS ties privacy permissions (TCC) to the code signature, so with ad-hoc signing every rebuild re-prompts for permissions. If you have a signing certificate, export it once in your shell and rebuild:
-
-```sh
-export APPLE_SIGNING_IDENTITY="Apple Development: Your Name (TEAMID)"
-```
-
-Permissions then persist across rebuilds.
-
-## Development notes
-
-- Do **not** set `alwaysOnTop` / `visibleOnAllWorkspaces` in `tauri.conf.json` for the overlay window — Tauri re-applies the collection behavior after setup and wipes `fullScreenAuxiliary` (the flag that keeps the panel above full-screen apps). All panel configuration lives in `src-tauri/src/overlay.rs`
-- whisper.cpp's `WhisperVadContext` slows down linearly with each call, so the segmenter recreates it periodically (`stt/segmenter.rs`)
-- The screencapturekit crate embeds a Swift bridge, so the binary needs an rpath to `/usr/lib/swift` (`build.rs`)
-- In dev builds the native whisper/DSP crates are compiled with `opt-level = 3` — debug-level optimization is too slow for realtime audio
-
-## Releasing
-
-Pushing a `v*` tag triggers the [release workflow](.github/workflows/release.yml), which builds a `.dmg` on an Apple Silicon runner and attaches it to a **draft** GitHub Release:
-
-```sh
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-Review the draft on the Releases page and publish it.
-
-Without any secrets configured the artifact is ad-hoc signed (users must right-click → Open on first launch). For signed & notarized builds, set these repository secrets:
-
-| Secret | Value |
-|---|---|
-| `APPLE_CERTIFICATE` | base64-encoded `.p12` of a "Developer ID Application" certificate |
-| `APPLE_CERTIFICATE_PASSWORD` | password of the `.p12` |
-| `APPLE_SIGNING_IDENTITY` | e.g. `Developer ID Application: Your Name (TEAMID)` |
-| `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` | Apple ID, app-specific password, and team ID for notarization |
+On macOS 15+, the Screen Recording fallback triggers a periodic system re-confirmation dialog — this is a macOS policy for screen-capture apps, not something kotonoha controls.
 
 ## License
 

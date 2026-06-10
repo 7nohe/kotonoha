@@ -1,6 +1,6 @@
 # kotonoha 🍃
 
-[English](./README.md)
+[English](./README.md) | [開発者向けドキュメント](./docs/DEVELOPMENT.ja.md)
 
 ローカル完結のリアルタイム文字起こし・翻訳オーバーレイ (macOS)。
 
@@ -8,100 +8,63 @@
 
 ## 特徴
 
-- **フローティング字幕オーバーレイ** — フォーカスを奪わない非アクティベートパネルで、フルスクリーンの会議アプリの上にも表示。ドラッグ移動・クリックスルー・無音時の自動フェード対応
-- **リアルタイム文字起こし** — whisper.cpp (large-v3-turbo) + Metal アクセラレーション、Silero VAD による発話区間検出、約 2 秒以内に途中結果を表示
-- **ライブ翻訳** — 英語の発話をローカルの Ollama モデルで日本語化し、原文の下にトークン単位でストリーミング表示
+- **フローティング字幕オーバーレイ** — フォーカスを奪わず、フルスクリーンの会議アプリの上にも表示。ドラッグ移動・クリックスルー・無音時の自動フェード対応
+- **リアルタイム文字起こし** — whisper.cpp + Metal アクセラレーション。約 2 秒以内に途中結果を表示
+- **ライブ翻訳** — 英語の発話をローカルの Ollama モデルで日本語化し、原文の下にストリーミング表示
 - **2 系統の音声ソース** — システム音声(相手の声)とマイク(自分の声)を並行して文字起こし
-- **議事録エクスポート** — セッションの発話履歴を Markdown で `~/Downloads` に書き出し。Ollama による要点・決定事項・TODO のサマリ付きも可能
+- **議事録エクスポート** — セッションの発話履歴を Markdown で `~/Downloads` に書き出し。AI による要点・決定事項・TODO のサマリ付きも可能
 - **完全ローカル** — クラウドなし、API キーなし、テレメトリなし
 
-## 構成
+## 動作環境
 
-- **アプリ**: Tauri 2 + React + TypeScript
-- **音声認識**: whisper.cpp ([whisper-rs](https://github.com/tazz4843/whisper-rs) 経由、Metal)、Silero VAD (whisper.cpp 内蔵)
-- **翻訳・サマリ**: [Ollama](https://ollama.com) (`localhost:11434`、ストリーミング)
-- **システム音声**: Core Audio process taps (macOS 14.4+、画面収録権限不要) → 使えない場合は ScreenCaptureKit に自動フォールバック
-- **マイク**: cpal
-- **オーバーレイ**: [tauri-nspanel](https://github.com/ahkohd/tauri-nspanel) による非アクティベートのフローティングパネル
+- macOS 13.3 以降(Apple Silicon 推奨)
+- 音声認識モデル用に約 600MB のディスク空き容量(初回起動時にアプリ内でダウンロード)
+- [Ollama](https://ollama.com) — 任意。翻訳とサマリ生成にのみ必要
 
-## はじめる
+## インストール
 
-### 必要なもの
+[Releases](../../releases) から最新の `.dmg` をダウンロードし、kotonoha を Applications にドラッグしてください。
 
-- macOS 13.3+(Apple Silicon 推奨。Core Audio tap バックエンドは 14.4+)
-- Node.js / Rust 1.77.2+ / CMake (`brew install cmake`) / Xcode Command Line Tools
+> 公証されていないビルドの場合、初回は右クリック→「開く」で起動してください。
 
-### ビルドと起動
+ソースからのビルドは[開発者向けドキュメント](./docs/DEVELOPMENT.ja.md)を参照。
 
-```sh
-npm install
-npm run tauri dev      # 開発
-npm run tauri build    # リリース .app (src-tauri/target/release/bundle/macos/)
-```
+## 初回起動
 
-初回起動時にオンボーディングが開き、権限の付与と音声認識モデルのダウンロード(アプリ内)を案内します。
+オンボーディングが以下を案内します:
 
-### Ollama(任意。翻訳・サマリに必要)
+1. **権限** — マイク(自分の声)とシステム音声キャプチャ(相手の声)
+2. **音声認識モデルのダウンロード** — `large-v3-turbo`(推奨)または `base`(軽量)
+3. **Ollama 検出** — 任意。`ollama serve` が起動していれば接続済みと表示
+
+セットアップ完了後、自動でキャプチャが始まります。
+
+## Ollama で翻訳を使う(任意)
 
 ```sh
 brew install --cask ollama-app   # 公式アプリ。formula 版 (brew install ollama) は
                                  # llama-server が同梱されず動かないことがある
-ollama serve                     # または Ollama.app を起動
 ollama pull qwen2.5:3b-instruct  # 軽量で高速な翻訳向けモデル
 ```
 
-設定画面の「言語」を「英語→日本語」に切り替えると、英語の発話が確定するたびに日本語訳がストリーミング表示されます。Ollama が起動していなくても文字起こしは動き続けます。
+メニューバーアイコンから設定を開き、言語を**英語→日本語**に切り替えると、英語の発話が確定するたびに日本語訳がストリーミング表示されます。Ollama が落ちていても文字起こしは動き続けます。訳の品質を上げたい場合は大きめのモデル(例: `qwen3:8b`)を pull して設定画面で選択してください。
 
-## 使い方
+## 日常の使い方
 
-1. メニューバーのアイコンから操作(オーバーレイ表示/非表示、クリックスルー、議事録の書き出し、設定、終了)
-2. オーバーレイはドラッグで任意の位置へ移動。ホバーで操作ボタン(キャプチャ開始/停止・クリックスルー・設定)が出現
-3. クリックスルーを有効にすると字幕越しに下のアプリを操作可能(解除はメニューバーから)
-4. **ヘッドホン推奨**: スピーカー再生だと相手の声をマイクが二重に拾います
+- 操作はすべて**メニューバーアイコン**から: オーバーレイ表示/非表示、クリックスルー、議事録の書き出し、設定、終了
+- オーバーレイは**ドラッグ**で移動、**ホバー**で操作ボタン(キャプチャ切替・クリックスルー・設定)が出現
+- **クリックスルー**を有効にすると字幕越しに下のアプリを操作可能(解除はメニューバーから)
+- **議事録の書き出し**は Markdown を `~/Downloads` に保存。「サマリ付き」は Ollama が要点・決定事項・TODO を生成
+- **ヘッドホン推奨** — スピーカー再生だと相手の声をマイクも拾い、字幕が重複します
 
-## システム音声のキャプチャ方式
+## プライバシーと権限
 
-1. **Core Audio process tap** (macOS 14.4+) — 「画面収録」ではなく軽い「システムオーディオ録音」権限で動作。起動時にまずこちらを試します
-2. **ScreenCaptureKit** — tap が使えない環境 (macOS 13.x、権限拒否など) では自動フォールバック
+音声処理はすべて Mac 上で完結します。アプリが要求する権限:
 
-どちらが使われたかはログ (`[audio] system backend: ...`) で確認できます。
+- **マイク** — 自分の発話の文字起こし
+- **システムオーディオ録音**(macOS 14.4+)または**画面収録**(macOS 13.x フォールバック)— 相手の声の文字起こし。処理するのは音声のみで、映像はキャプチャしません
 
-## コード署名(開発時)
-
-`tauri.conf.json` は `"signingIdentity": "-"`(ad-hoc)になっており、クローン直後からそのままビルドできます。ただし macOS のプライバシー権限 (TCC) はコード署名に紐づくため、ad-hoc のままだとリビルドのたびに権限が再要求されます。署名証明書を持っている場合はシェルで一度 export してからビルドしてください:
-
-```sh
-export APPLE_SIGNING_IDENTITY="Apple Development: Your Name (TEAMID)"
-```
-
-これで権限の許可がリビルド後も保持されます。
-
-## 開発メモ
-
-- オーバーレイウィンドウの `alwaysOnTop` / `visibleOnAllWorkspaces` を `tauri.conf.json` で**設定してはいけません**。Tauri が setup 後に collectionBehavior を上書きし、フルスクリーンアプリの上に表示するためのフラグ `fullScreenAuxiliary` が消えます。パネル設定は `src-tauri/src/overlay.rs` に集約しています
-- whisper.cpp の `WhisperVadContext` は呼び出しを重ねると処理時間が線形に伸びるため、セグメンタ内で定期的に再生成しています (`stt/segmenter.rs`)
-- screencapturekit crate は Swift ブリッジを含むため、バイナリに `/usr/lib/swift` への rpath が必要です (`build.rs`)
-- dev ビルドでも whisper / DSP 系クレートは `opt-level = 3` でコンパイルします(デバッグ最適化ではリアルタイム音声処理に間に合いません)
-
-## リリース
-
-`v*` タグを push すると[リリースワークフロー](.github/workflows/release.yml)が起動し、Apple Silicon ランナーで `.dmg` をビルドして**ドラフト**の GitHub Release に添付します:
-
-```sh
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-Releases ページでドラフトを確認して公開してください。
-
-secrets 未設定でも動作します(成果物は ad-hoc 署名となり、初回起動時に右クリック→開くが必要)。署名・公証済みビルドにする場合は、以下のリポジトリ secrets を設定します:
-
-| Secret | 値 |
-|---|---|
-| `APPLE_CERTIFICATE` | "Developer ID Application" 証明書の `.p12` を base64 化したもの |
-| `APPLE_CERTIFICATE_PASSWORD` | `.p12` のパスワード |
-| `APPLE_SIGNING_IDENTITY` | 例: `Developer ID Application: Your Name (TEAMID)` |
-| `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` | 公証用の Apple ID・アプリ用パスワード・チーム ID |
+macOS 15 以降では、画面収録フォールバック使用時にシステムが定期的に確認ダイアログを出します — これは macOS 側のポリシーで、kotonoha が制御できるものではありません。
 
 ## ライセンス
 
