@@ -1,0 +1,4 @@
+/* Japanese localization for permission prompts */
+"NSMicrophoneUsageDescription" = "自分の発話をリアルタイムで文字起こしするためにマイクを使用します。音声は外部に送信されず、すべてローカルで処理されます。";
+"NSScreenCaptureUsageDescription" = "ミーティング相手の音声を文字起こしするためにシステム音声をキャプチャします。音声は外部に送信されず、すべてローカルで処理されます。";
+"NSAudioCaptureUsageDescription" = "ミーティング相手の音声を文字起こしするためにシステム音声を録音します。音声は外部に送信されず、すべてローカルで処理されます。";

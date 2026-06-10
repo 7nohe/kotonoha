@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>ja</string>
+	</array>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>kotonoha uses the microphone to transcribe your speech in real time. Audio never leaves your machine — everything is processed locally.</string>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>kotonoha captures system audio to transcribe the other meeting participants. Audio never leaves your machine — everything is processed locally.</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>kotonoha records system audio to transcribe the other meeting participants. Audio never leaves your machine — everything is processed locally.</string>
+</dict>
+</plist>

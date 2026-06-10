@@ -1,0 +1,6 @@
+<svg width="44" height="44" viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg">
+  <!-- Menu bar template: black + alpha only. Same leaf as the logo, placed larger -->
+  <!-- Render with ImageMagick native draw + DstOut compositing (this SVG is the source artwork) -->
+  <path d="M 33.7 5.3 Q 41.0 29.0 10.7 36.5 Q 3.5 12.9 33.7 5.3 Z" fill="#000000"/>
+  <path d="M 31.4 7.8 Q 19.8 19.4 12.3 33.9" stroke="#ffffff" stroke-width="3.25" stroke-linecap="round" fill="none"/>
+</svg>

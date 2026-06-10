@@ -1,0 +1,23 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- leaf-a with the white bar removed; the leaf takes center stage, enlarged and centered -->
+  <defs>
+    <linearGradient id="bg" x1="512" y1="0" x2="512" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1b1b21"/>
+      <stop offset="1" stop-color="#0a0a0d"/>
+    </linearGradient>
+    <linearGradient id="mint" x1="300" y1="720" x2="720" y2="270" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2dd4bf"/>
+      <stop offset="1" stop-color="#6ef2da"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="330" cy="330" r="620" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2dd4bf" stop-opacity="0.18"/>
+      <stop offset="0.55" stop-color="#2dd4bf" stop-opacity="0.05"/>
+      <stop offset="1" stop-color="#2dd4bf" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="0" y="0" width="1024" height="1024" rx="230" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1024" height="1024" rx="230" fill="url(#glow)"/>
+
+  <path d="M 700 244 Q 816 624 330 744 Q 214 364 700 244 Z" fill="url(#mint)"/>
+  <path d="M 662 284 Q 478 470 356 702" stroke="#101013" stroke-width="26" stroke-linecap="round" fill="none" opacity="0.85"/>
+</svg>
