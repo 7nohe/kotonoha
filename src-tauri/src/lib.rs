@@ -12,7 +12,6 @@ mod tray;
 
 use tauri::Manager;
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_nspanel::init())
@@ -20,11 +19,9 @@ pub fn run() {
         .manage(state::AppState::default())
         .invoke_handler(tauri::generate_handler![
             commands::set_click_through,
-            commands::get_click_through,
             commands::show_settings,
             commands::start_capture,
             commands::stop_capture,
-            commands::is_capturing,
             commands::get_config,
             commands::set_config,
             commands::list_ollama_models,
@@ -36,7 +33,6 @@ pub fn run() {
             commands::download_whisper_model,
             commands::is_onboarding_needed,
             commands::export_transcript,
-            commands::clear_history,
         ])
         .setup(|app| {
             // Redirect whisper.cpp's stderr spam through the log crate

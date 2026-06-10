@@ -54,8 +54,10 @@ export default function Overlay() {
   const applyTranslation = useCallback(
     (ev: TranslationEvent) => {
       touch();
-      setCaptions((prev) =>
-        prev.map((c) =>
+      setCaptions((prev) => {
+        // Return the same array when nothing matches to skip the re-render
+        if (!prev.some((c) => c.utteranceId === ev.utteranceId)) return prev;
+        return prev.map((c) =>
           c.utteranceId === ev.utteranceId
             ? {
                 ...c,
@@ -63,8 +65,8 @@ export default function Overlay() {
                 translationDone: ev.done,
               }
             : c,
-        ),
-      );
+        );
+      });
     },
     [touch],
   );
@@ -99,10 +101,8 @@ export default function Overlay() {
     try {
       if (recording) {
         await stopCapture();
-        setRecording(false);
       } else {
         await startCapture();
-        setRecording(true);
         setError(null);
       }
     } catch (e) {

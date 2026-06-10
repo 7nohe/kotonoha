@@ -39,20 +39,13 @@ impl History {
         self.entries.lock().unwrap().is_empty()
     }
 
-    pub fn clear(&self) {
-        self.entries.lock().unwrap().clear();
-    }
-
     /// Builds the transcript body as Markdown
     pub fn to_markdown(&self) -> String {
         let entries = self.entries.lock().unwrap();
         let mut out = String::new();
         for e in entries.iter() {
             let time: chrono::DateTime<chrono::Local> = e.time.into();
-            let speaker = match e.source {
-                SourceKind::Mic => "自分",
-                SourceKind::System => "相手",
-            };
+            let speaker = e.source.speaker_ja();
             out.push_str(&format!(
                 "**[{}] {}**: {}\n",
                 time.format("%H:%M:%S"),
@@ -67,21 +60,13 @@ impl History {
         out
     }
 
-    #[cfg(test)]
-    fn push_for_test(&self, id: &str, source: SourceKind, text: &str) {
-        self.push_final(id.to_string(), source, text.to_string());
-    }
-
     /// Plain text used for summary generation
     pub fn to_plain_text(&self) -> String {
         let entries = self.entries.lock().unwrap();
         entries
             .iter()
             .map(|e| {
-                let speaker = match e.source {
-                    SourceKind::Mic => "自分",
-                    SourceKind::System => "相手",
-                };
+                let speaker = e.source.speaker_ja();
                 match &e.translation {
                     Some(t) => format!("{speaker}: {} ({t})", e.text),
                     None => format!("{speaker}: {}", e.text),
@@ -99,8 +84,8 @@ mod tests {
     #[test]
     fn markdown_includes_speaker_text_and_translation() {
         let h = History::default();
-        h.push_for_test("sys-1", SourceKind::System, "Let's ship on July 10th.");
-        h.push_for_test("mic-1", SourceKind::Mic, "了解です。");
+        h.push_final("sys-1".into(), SourceKind::System, "Let's ship on July 10th.".into());
+        h.push_final("mic-1".into(), SourceKind::Mic, "了解です。".into());
         h.set_translation("sys-1", "7月10日にリリースしましょう。".to_string());
 
         let md = h.to_markdown();
@@ -114,12 +99,10 @@ mod tests {
     }
 
     #[test]
-    fn clear_and_empty() {
+    fn empty_state() {
         let h = History::default();
         assert!(h.is_empty());
-        h.push_for_test("a", SourceKind::Mic, "x");
+        h.push_final("a".into(), SourceKind::Mic, "x".into());
         assert!(!h.is_empty());
-        h.clear();
-        assert!(h.is_empty());
     }
 }

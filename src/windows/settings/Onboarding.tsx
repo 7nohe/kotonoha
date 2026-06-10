@@ -8,9 +8,8 @@ import {
   requestMicrophonePermission,
   requestScreenRecordingPermission,
   startCapture,
-  type PermissionStatus,
-  type WhisperModelInfo,
 } from "../../lib/ipc";
+import type { PermissionStatus, WhisperModelInfo } from "../../lib/types";
 
 interface Props {
   onComplete: () => void;

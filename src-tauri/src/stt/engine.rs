@@ -5,7 +5,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 use crate::audio::TARGET_SAMPLE_RATE;
-use crate::events::{PipelineErrorEvent, SourceKind, TranscriptEvent};
+use crate::events::{emit_pipeline_error, SourceKind, TranscriptEvent, EV_TRANSCRIPT};
 use crate::translate::queue::{TranslationQueue, TranslationRequest};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -21,6 +21,8 @@ pub struct TranscribeJob {
     pub audio: Vec<f32>,
     /// Language passed to whisper ("ja" / "en")
     pub language: &'static str,
+    /// Whether the finalized utterance should be sent to the translation queue
+    pub translate: bool,
 }
 
 #[derive(Clone)]
@@ -58,24 +60,14 @@ fn run(
     let ctx = match WhisperContext::new_with_params(&model_path, ctx_params) {
         Ok(ctx) => ctx,
         Err(e) => {
-            let _ = app.emit(
-                "pipeline-error",
-                PipelineErrorEvent {
-                    message: format!("Whisper モデルの読み込みに失敗: {e}"),
-                },
-            );
+            emit_pipeline_error(&app, format!("Whisper モデルの読み込みに失敗: {e}"));
             return;
         }
     };
     let mut state = match ctx.create_state() {
         Ok(s) => s,
         Err(e) => {
-            let _ = app.emit(
-                "pipeline-error",
-                PipelineErrorEvent {
-                    message: format!("Whisper state の作成に失敗: {e}"),
-                },
-            );
+            emit_pipeline_error(&app, format!("Whisper state の作成に失敗: {e}"));
             return;
         }
     };
@@ -135,17 +127,17 @@ fn run(
                 continue;
             }
 
+            let is_final = job.kind == JobKind::Final;
             eprintln!(
                 "[stt] {:?} {} ({:.1}s audio): {}",
                 job.source,
-                if job.kind == JobKind::Final { "final" } else { "partial" },
+                if is_final { "final" } else { "partial" },
                 audio.len() as f32 / TARGET_SAMPLE_RATE as f32,
                 text
             );
 
-            let is_final = job.kind == JobKind::Final;
             let _ = app.emit(
-                "transcript",
+                EV_TRANSCRIPT,
                 TranscriptEvent {
                     utterance_id: job.utterance_id.clone(),
                     source: job.source,
@@ -159,43 +151,38 @@ fn run(
                 state
                     .history
                     .push_final(job.utterance_id.clone(), job.source, text.clone());
-            }
 
-            // English meeting mode: translate finalized utterances into Japanese
-            if is_final && job.language == "en" {
-                translation.submit(TranslationRequest {
-                    utterance_id: job.utterance_id.clone(),
-                    text,
-                });
+                if job.translate {
+                    translation.submit(TranslationRequest {
+                        utterance_id: job.utterance_id,
+                        text,
+                    });
+                }
             }
         }
     }
 }
 
-/// Keeps only the latest partial per (source, utterance). Finals are always kept.
-/// Partials for utterances that already have a pending final are useless and dropped.
+/// Keeps only the latest partial per utterance; finals are always kept and
+/// processed first to minimize the latency of finalized captions.
+/// (Utterance ids are globally unique and each source sends its jobs in order,
+/// so a partial can never arrive after its own final within a batch.)
 fn coalesce(jobs: Vec<TranscribeJob>) -> Vec<TranscribeJob> {
     let mut finals = Vec::new();
-    let mut latest_partial: HashMap<(SourceKind, String), TranscribeJob> = HashMap::new();
-    let mut finalized: Vec<(SourceKind, String)> = Vec::new();
+    let mut latest_partial: HashMap<String, TranscribeJob> = HashMap::new();
 
     for job in jobs {
-        let key = (job.source, job.utterance_id.clone());
         match job.kind {
             JobKind::Final => {
-                latest_partial.remove(&key);
-                finalized.push(key);
+                latest_partial.remove(&job.utterance_id);
                 finals.push(job);
             }
             JobKind::Partial => {
-                if !finalized.contains(&key) {
-                    latest_partial.insert(key, job);
-                }
+                latest_partial.insert(job.utterance_id.clone(), job);
             }
         }
     }
 
-    // Process finals first to minimize latency of finalized captions
     finals.extend(latest_partial.into_values());
     finals
 }

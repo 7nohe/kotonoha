@@ -1925,7 +1925,6 @@ dependencies = [
  "cpal",
  "crossbeam-channel",
  "futures-util",
- "parking_lot",
  "reqwest 0.12.28",
  "rtrb",
  "rubato",

@@ -8,8 +8,8 @@ use screencapturekit::stream::content_filter::SCContentFilter;
 use screencapturekit::stream::output_type::SCStreamOutputType;
 use screencapturekit::stream::sc_stream::SCStream;
 
-pub const SYSTEM_SAMPLE_RATE: u32 = 48_000;
-pub const SYSTEM_CHANNELS: usize = 2;
+const SYSTEM_SAMPLE_RATE: u32 = 48_000;
+const SYSTEM_CHANNELS: usize = 2;
 
 struct AudioHandler {
     producer: Mutex<rtrb::Producer<f32>>,
@@ -32,26 +32,22 @@ impl screencapturekit::stream::output_trait::SCStreamOutputTrait for AudioHandle
             let (Some(left), Some(right)) = (list.buffer(0), list.buffer(1)) else {
                 return;
             };
-            let l = bytes_as_f32(left.data());
-            let r = bytes_as_f32(right.data());
+            let (l, r) = unsafe {
+                (
+                    crate::audio::bytes_as_f32(left.data()),
+                    crate::audio::bytes_as_f32(right.data()),
+                )
+            };
             for i in 0..l.len().min(r.len()) {
                 let _ = producer.push((l[i] + r[i]) * 0.5);
             }
         } else if n_buffers == 1 {
             // Interleaved (or mono): push as-is and downmix downstream
             if let Some(buf) = list.buffer(0) {
-                for &s in bytes_as_f32(buf.data()) {
-                    let _ = producer.push(s);
-                }
+                let samples = unsafe { crate::audio::bytes_as_f32(buf.data()) };
+                crate::audio::push_samples(&mut producer, samples);
             }
         }
-    }
-}
-
-fn bytes_as_f32(bytes: &[u8]) -> &[f32] {
-    // SCK audio is f32 PCM. Alignment is guaranteed by CoreAudio
-    unsafe {
-        std::slice::from_raw_parts(bytes.as_ptr().cast::<f32>(), bytes.len() / 4)
     }
 }
 

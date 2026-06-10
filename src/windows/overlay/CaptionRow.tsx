@@ -1,10 +1,11 @@
+import { memo } from "react";
 import type { Caption } from "../../lib/types";
 
 interface Props {
   caption: Caption;
 }
 
-export default function CaptionRow({ caption }: Props) {
+function CaptionRow({ caption }: Props) {
   const bilingual = caption.translation !== undefined;
   const streaming = bilingual && !caption.translationDone;
 
@@ -30,3 +31,5 @@ export default function CaptionRow({ caption }: Props) {
     </div>
   );
 }
+
+export default memo(CaptionRow);

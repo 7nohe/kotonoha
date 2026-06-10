@@ -3,7 +3,7 @@ export type Source = "mic" | "system";
 export interface Caption {
   utteranceId: string;
   source: Source;
-  /** Original transcript (Japanese in ja mode, English in en→ja mode) */
+  /** Transcribed original text (Japanese in ja mode, English in en→ja mode) */
   original: string;
   /** Streaming translation from Ollama (en→ja mode only) */
   translation?: string;
@@ -31,4 +31,22 @@ export interface Config {
   ollamaModel: string | null;
   micEnabled: boolean;
   systemEnabled: boolean;
+}
+
+export interface PermissionStatus {
+  microphone: boolean;
+  screenRecording: boolean;
+}
+
+export interface WhisperModelInfo {
+  label: string;
+  file: string;
+  sizeMb: number;
+  downloaded: boolean;
+}
+
+export interface DownloadProgress {
+  file: string;
+  downloaded: number;
+  total: number;
 }

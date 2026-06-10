@@ -2,10 +2,10 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc};
 use std::time::Duration;
 
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 
 use crate::audio::{downmix_to_mono, mic, resample::MonoResampler, system, system_catap};
-use crate::events::{PipelineErrorEvent, SourceKind};
+use crate::events::{emit_pipeline_error, SourceKind};
 use crate::stt::engine::{JobKind, SttEngine, TranscribeJob};
 use crate::stt::segmenter::{Segmenter, SegmenterOutput};
 
@@ -16,11 +16,7 @@ static UTTERANCE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 fn next_utterance_id(source: SourceKind) -> String {
     let n = UTTERANCE_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let prefix = match source {
-        SourceKind::Mic => "mic",
-        SourceKind::System => "sys",
-    };
-    format!("{prefix}-{n}")
+    format!("{}-{n}", source.id_prefix())
 }
 
 pub struct PipelineHandle {
@@ -41,32 +37,25 @@ impl Drop for PipelineHandle {
     }
 }
 
+#[derive(Clone)]
+pub struct PipelineParams {
+    pub vad_model_path: String,
+    /// Language passed to whisper ("ja" / "en")
+    pub language: &'static str,
+    /// Whether finalized utterances should be sent to the translation queue
+    pub translate: bool,
+}
+
 /// Microphone pipeline:
 /// cpal RT callback → rtrb → worker (downmix → 16kHz resample → VAD segmenter) → whisper job
 pub fn start_mic(
     app: AppHandle,
     engine: SttEngine,
-    vad_model_path: String,
-    language: &'static str,
+    params: PipelineParams,
 ) -> Result<PipelineHandle, String> {
-    let (producer, consumer) = rtrb::RingBuffer::<f32>::new(RING_CAPACITY);
-    let (capture_stop_tx, capture_stop_rx) = mpsc::channel::<()>();
-
-    let info = mic::start(producer, capture_stop_rx)?;
-
-    spawn_worker(
-        app,
-        engine,
-        consumer,
-        WorkerConfig {
-            source: SourceKind::Mic,
-            sample_rate: info.sample_rate,
-            channels: info.channels,
-            vad_model_path,
-            language,
-        },
-        capture_stop_tx,
-    )
+    start_with(app, engine, params, SourceKind::Mic, |producer, stop_rx| {
+        mic::start(producer, stop_rx).map(|info| (info.sample_rate, info.channels))
+    })
 }
 
 /// System audio pipeline.
@@ -75,75 +64,53 @@ pub fn start_mic(
 pub fn start_system(
     app: AppHandle,
     engine: SttEngine,
-    vad_model_path: String,
-    language: &'static str,
+    params: PipelineParams,
 ) -> Result<PipelineHandle, String> {
-    let (producer, consumer) = rtrb::RingBuffer::<f32>::new(RING_CAPACITY);
-    let (capture_stop_tx, capture_stop_rx) = mpsc::channel::<()>();
-
-    let (sample_rate, channels) = match system_catap::start(producer, capture_stop_rx) {
-        Ok(info) => {
+    let catap = start_with(
+        app.clone(),
+        engine.clone(),
+        params.clone(),
+        SourceKind::System,
+        |producer, stop_rx| {
+            let info = system_catap::start(producer, stop_rx)?;
             eprintln!("[audio] system backend: Core Audio tap ({}Hz)", info.sample_rate);
-            (info.sample_rate, info.channels)
-        }
+            Ok((info.sample_rate, info.channels))
+        },
+    );
+    match catap {
+        Ok(handle) => Ok(handle),
         Err(catap_err) => {
             eprintln!("[audio] CATap unavailable ({catap_err}), falling back to ScreenCaptureKit");
-            // On CATap failure, recreate the producer and retry with SCK
-            let (producer, consumer2) = rtrb::RingBuffer::<f32>::new(RING_CAPACITY);
-            let (stop_tx2, stop_rx2) = mpsc::channel::<()>();
-            let info = system::start(producer, stop_rx2)?;
-            return spawn_worker(
-                app,
-                engine,
-                consumer2,
-                WorkerConfig {
-                    source: SourceKind::System,
-                    sample_rate: info.sample_rate,
-                    channels: info.channels,
-                    vad_model_path,
-                    language,
-                },
-                stop_tx2,
-            );
+            start_with(app, engine, params, SourceKind::System, |producer, stop_rx| {
+                system::start(producer, stop_rx).map(|info| (info.sample_rate, info.channels))
+            })
         }
-    };
-
-    spawn_worker(
-        app,
-        engine,
-        consumer,
-        WorkerConfig {
-            source: SourceKind::System,
-            sample_rate,
-            channels,
-            vad_model_path,
-            language,
-        },
-        capture_stop_tx,
-    )
+    }
 }
 
-struct WorkerConfig {
-    source: SourceKind,
-    sample_rate: u32,
-    channels: usize,
-    vad_model_path: String,
-    language: &'static str,
-}
-
-fn spawn_worker(
+/// Wires one capture backend into a worker thread:
+/// backend writes f32 samples into the ring buffer; the worker downmixes,
+/// resamples to 16kHz, segments by VAD, and enqueues whisper jobs.
+fn start_with(
     app: AppHandle,
     engine: SttEngine,
-    mut consumer: rtrb::Consumer<f32>,
-    config: WorkerConfig,
-    capture_stop_tx: mpsc::Sender<()>,
+    params: PipelineParams,
+    source: SourceKind,
+    backend: impl FnOnce(rtrb::Producer<f32>, mpsc::Receiver<()>) -> Result<(u32, usize), String>,
 ) -> Result<PipelineHandle, String> {
-    let mut resampler = MonoResampler::new(config.sample_rate)?;
-    let mut segmenter = Segmenter::new(&config.vad_model_path)?;
+    let (producer, mut consumer) = rtrb::RingBuffer::<f32>::new(RING_CAPACITY);
+    let (capture_stop_tx, capture_stop_rx) = mpsc::channel::<()>();
+
+    let (sample_rate, channels) = backend(producer, capture_stop_rx)?;
+
+    let mut resampler = MonoResampler::new(sample_rate)?;
+    let mut segmenter = Segmenter::new(&params.vad_model_path)?;
 
     let stop_flag = Arc::new(AtomicBool::new(false));
     let stop = stop_flag.clone();
-    let thread_name = format!("{:?}-pipeline", config.source).to_lowercase();
+    let thread_name = format!("{}-pipeline", source.id_prefix());
+    let language = params.language;
+    let translate = params.translate;
 
     std::thread::Builder::new()
         .name(thread_name)
@@ -164,11 +131,17 @@ fn spawn_worker(
                     continue;
                 }
 
-                let mono = downmix_to_mono(&raw, config.channels);
-                let resampled = match resampler.process(&mono) {
+                let downmixed;
+                let mono: &[f32] = if channels > 1 {
+                    downmixed = downmix_to_mono(&raw, channels);
+                    &downmixed
+                } else {
+                    &raw
+                };
+                let resampled = match resampler.process(mono) {
                     Ok(r) => r,
                     Err(e) => {
-                        let _ = app.emit("pipeline-error", PipelineErrorEvent { message: e });
+                        emit_pipeline_error(&app, e);
                         break;
                     }
                 };
@@ -181,18 +154,23 @@ fn spawn_worker(
                         SegmenterOutput::Partial(a) => (JobKind::Partial, a),
                         SegmenterOutput::Final(a) => (JobKind::Final, a),
                     };
+                    // A backlogged engine drops stale partials anyway — don't even queue them
+                    if kind == JobKind::Partial && !engine.job_tx.is_empty() {
+                        continue;
+                    }
                     let id = current_id
-                        .get_or_insert_with(|| next_utterance_id(config.source))
+                        .get_or_insert_with(|| next_utterance_id(source))
                         .clone();
                     if kind == JobKind::Final {
                         current_id = None;
                     }
                     let _ = engine.job_tx.send(TranscribeJob {
-                        source: config.source,
+                        source,
                         utterance_id: id,
                         kind,
                         audio,
-                        language: config.language,
+                        language,
+                        translate,
                     });
                 }
             }

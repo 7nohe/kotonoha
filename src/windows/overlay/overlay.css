@@ -39,10 +39,20 @@
 .captions {
   display: flex;
   flex-direction: column;
+  justify-content: flex-end;
   gap: 7px;
+  /* Anchor to the bottom and clip overflowing old rows at the top with a fade,
+     so long captions never get sheared off by the window edge. The fade zone
+     equals the top padding: with fitting content it only covers empty space. */
+  max-height: calc(100vh - 64px);
+  overflow: hidden;
+  padding-top: 20px;
+  mask-image: linear-gradient(to bottom, transparent 0, black 20px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, black 20px);
 }
 
 .caption {
+  flex-shrink: 0;
   display: flex;
   gap: 12px;
   animation: row-enter 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);

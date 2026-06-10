@@ -1,8 +1,13 @@
+use std::time::{Duration, Instant};
+
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::mpsc;
 
-use crate::events::{PipelineErrorEvent, TranslationEvent};
+use crate::events::{emit_pipeline_error, TranslationEvent, EV_TRANSLATION};
 use crate::state::AppState;
+
+/// Tokens are coalesced and flushed to the UI at most this often
+const FLUSH_INTERVAL: Duration = Duration::from_millis(80);
 
 pub struct TranslationRequest {
     pub utterance_id: String,
@@ -15,7 +20,7 @@ pub struct TranslationQueue {
 }
 
 impl TranslationQueue {
-    /// Called from the STT thread. Never blocks, even if the queue is full.
+    /// Called from the STT thread. Never blocks, even if the queue is congested.
     pub fn submit(&self, req: TranslationRequest) {
         if self.tx.try_send(req).is_err() {
             eprintln!("[translate] queue full, dropping request");
@@ -23,12 +28,11 @@ impl TranslationQueue {
     }
 }
 
-/// Spawns the translation worker for Ollama (on tauri's tokio runtime).
+/// Spawns the Ollama translation worker (on tauri's tokio runtime).
 pub fn spawn(app: AppHandle) -> TranslationQueue {
     let (tx, mut rx) = mpsc::channel::<TranslationRequest>(16);
 
     tauri::async_runtime::spawn(async move {
-        let client = reqwest::Client::new();
         let mut warned = false;
 
         while let Some(req) = rx.recv().await {
@@ -37,7 +41,7 @@ pub fn spawn(app: AppHandle) -> TranslationQueue {
                 let config = state.config.lock().unwrap();
                 config.ollama_model.clone()
             };
-            // If no model is configured, use the first model available in Ollama
+            // No model configured: use the first one Ollama has installed
             let model = match model {
                 Some(m) => m,
                 None => {
@@ -53,11 +57,9 @@ pub fn spawn(app: AppHandle) -> TranslationQueue {
                         }
                         None => {
                             if !warned {
-                                let _ = app.emit(
-                                    "pipeline-error",
-                                    PipelineErrorEvent {
-                                        message: "Ollama が起動していないかモデルがありません。翻訳をスキップします。".into(),
-                                    },
+                                emit_pipeline_error(
+                                    &app,
+                                    "Ollama が起動していないかモデルがありません。翻訳をスキップします。",
                                 );
                                 warned = true;
                             }
@@ -67,19 +69,27 @@ pub fn spawn(app: AppHandle) -> TranslationQueue {
                 }
             };
 
+            // Coalesce streamed tokens: emitting one IPC event per token floods
+            // the webview with re-renders, so flush at most every FLUSH_INTERVAL
             let app_emit = app.clone();
             let utterance_id = req.utterance_id.clone();
             let mut full_text = String::new();
-            let result = super::ollama::translate_stream(&client, &model, &req.text, |delta, done| {
+            let mut pending = String::new();
+            let mut last_flush = Instant::now();
+            let result = super::ollama::translate_stream(&model, &req.text, |delta, done| {
                 full_text.push_str(&delta);
-                let _ = app_emit.emit(
-                    "translation",
-                    TranslationEvent {
-                        utterance_id: utterance_id.clone(),
-                        delta,
-                        done,
-                    },
-                );
+                pending.push_str(&delta);
+                if done || last_flush.elapsed() >= FLUSH_INTERVAL {
+                    let _ = app_emit.emit(
+                        EV_TRANSLATION,
+                        TranslationEvent {
+                            utterance_id: utterance_id.clone(),
+                            delta: std::mem::take(&mut pending),
+                            done,
+                        },
+                    );
+                    last_flush = Instant::now();
+                }
             })
             .await;
 
@@ -93,9 +103,9 @@ pub fn spawn(app: AppHandle) -> TranslationQueue {
                     }
                 }
                 Err(e) => {
-                    // Report connection loss only once; do not stop transcription
+                    // Notify connection problems only once; transcription keeps running
                     if !warned {
-                        let _ = app.emit("pipeline-error", PipelineErrorEvent { message: e });
+                        emit_pipeline_error(&app, e);
                         warned = true;
                     }
                 }

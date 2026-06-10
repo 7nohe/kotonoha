@@ -1,6 +1,8 @@
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::config::Config;
+use crate::events::EV_CAPTURE_STATE;
+use crate::pipeline::PipelineParams;
 use crate::state::AppState;
 use crate::stt::models;
 use crate::translate::ollama;
@@ -24,13 +26,6 @@ pub fn set_click_through(app: AppHandle, enabled: bool) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn get_click_through(app: AppHandle) -> bool {
-    app.state::<AppState>()
-        .click_through
-        .load(std::sync::atomic::Ordering::Relaxed)
-}
-
-#[tauri::command]
 pub fn show_settings(app: AppHandle) -> Result<(), String> {
     let window = app
         .get_webview_window("settings")
@@ -44,22 +39,26 @@ pub fn get_config(app: AppHandle) -> Config {
     app.state::<AppState>().config.lock().unwrap().clone()
 }
 
-/// Saves the configuration. If capturing, restarts the pipeline with the new settings.
+/// Saves the configuration. Restarts the pipelines with the new settings if capturing.
 #[tauri::command]
-pub fn set_config(app: AppHandle, config: Config) -> Result<(), String> {
-    let was_capturing = is_capturing(app.clone());
+pub async fn set_config(app: AppHandle, config: Config) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let was_capturing = is_capturing(&app);
 
-    {
-        let state = app.state::<AppState>();
-        *state.config.lock().unwrap() = config.clone();
-    }
-    config::save(&app, &config)?;
+        {
+            let state = app.state::<AppState>();
+            *state.config.lock().unwrap() = config.clone();
+        }
+        config::save(&app, &config)?;
 
-    if was_capturing {
-        stop_capture(app.clone())?;
-        start_capture(app)?;
-    }
-    Ok(())
+        if was_capturing {
+            stop_capture_impl(&app)?;
+            start_capture_impl(&app)?;
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -112,11 +111,11 @@ pub fn is_onboarding_needed(app: AppHandle) -> bool {
     !models::is_ready(&app)
 }
 
-/// Exports the history as Markdown meeting minutes to ~/Downloads and returns the path.
-/// With with_summary, prepends an Ollama-generated summary (key points, decisions, TODOs).
+/// Exports the session history as a Markdown file in ~/Downloads and returns its path.
+/// With `with_summary`, prepends an Ollama-generated summary (key points / decisions / TODOs).
 #[tauri::command]
 pub async fn export_transcript(app: AppHandle, with_summary: bool) -> Result<String, String> {
-    // Extract the needed values up front so state is not held across an await
+    // Extract everything needed up front so no state lock is held across awaits
     let (body, plain, model) = {
         let state = app.state::<AppState>();
         if state.history.is_empty() {
@@ -154,21 +153,31 @@ pub async fn export_transcript(app: AppHandle, with_summary: bool) -> Result<Str
     Ok(path.to_string_lossy().into_owned())
 }
 
+/// Starts the capture + transcription pipelines per the current config.
+/// Runs off the main thread: model loading and SCK enumeration are slow.
 #[tauri::command]
-pub fn clear_history(app: AppHandle) {
-    app.state::<AppState>().history.clear();
+pub async fn start_capture(app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || start_capture_impl(&app))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
-/// Starts the capture + transcription pipeline based on the configuration. Starting twice is a no-op.
 #[tauri::command]
-pub fn start_capture(app: AppHandle) -> Result<(), String> {
+pub async fn stop_capture(app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || stop_capture_impl(&app))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn start_capture_impl(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
-    let (mic_enabled, system_enabled, language) = {
+    let (mic_enabled, system_enabled, language, translate) = {
         let config = state.config.lock().unwrap();
         (
             config.mic_enabled,
             config.system_enabled,
             config.whisper_language(),
+            config.direction == crate::config::Direction::EnJa,
         )
     };
 
@@ -183,7 +192,7 @@ pub fn start_capture(app: AppHandle) -> Result<(), String> {
     let engine = {
         let mut guard = state.stt_engine.lock().unwrap();
         if guard.is_none() {
-            let model_path = models::whisper_model_path(&app)?;
+            let model_path = models::whisper_model_path(app)?;
             let (engine, handle) = stt::engine::spawn(
                 app.clone(),
                 model_path.to_string_lossy().into_owned(),
@@ -195,53 +204,55 @@ pub fn start_capture(app: AppHandle) -> Result<(), String> {
         guard.as_ref().unwrap().clone()
     };
 
-    let vad_path = models::vad_model_path(&app)?.to_string_lossy().into_owned();
+    let params = PipelineParams {
+        vad_model_path: models::vad_model_path(app)?.to_string_lossy().into_owned(),
+        language,
+        translate,
+    };
 
     if mic_enabled {
         let mut guard = state.mic_pipeline.lock().unwrap();
         if guard.is_none() {
-            *guard = Some(pipeline::start_mic(
-                app.clone(),
-                engine.clone(),
-                vad_path.clone(),
-                language,
-            )?);
+            *guard = Some(pipeline::start_mic(app.clone(), engine.clone(), params.clone())?);
         }
     }
 
     if system_enabled {
         let mut guard = state.system_pipeline.lock().unwrap();
         if guard.is_none() {
-            *guard = Some(pipeline::start_system(
-                app.clone(),
-                engine.clone(),
-                vad_path.clone(),
-                language,
-            )?);
+            *guard = Some(pipeline::start_system(app.clone(), engine.clone(), params)?);
         }
     }
 
-    let _ = tauri::Emitter::emit(&app, "capture-state", true);
+    let _ = app.emit(EV_CAPTURE_STATE, true);
     Ok(())
 }
 
-#[tauri::command]
-pub fn stop_capture(app: AppHandle) -> Result<(), String> {
+fn stop_capture_impl(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
-    if let Some(handle) = state.mic_pipeline.lock().unwrap().take() {
-        handle.stop();
-    }
-    if let Some(handle) = state.system_pipeline.lock().unwrap().take() {
-        handle.stop();
-    }
-    let _ = tauri::Emitter::emit(&app, "capture-state", false);
+    drop(state.mic_pipeline.lock().unwrap().take());
+    drop(state.system_pipeline.lock().unwrap().take());
+    let _ = app.emit(EV_CAPTURE_STATE, false);
     Ok(())
 }
 
-#[tauri::command]
-pub fn is_capturing(app: AppHandle) -> bool {
+pub fn is_capturing(app: &AppHandle) -> bool {
     let state = app.state::<AppState>();
     let mic = state.mic_pipeline.lock().unwrap().is_some();
     let system = state.system_pipeline.lock().unwrap().is_some();
     mic || system
+}
+
+/// Tears down audio + whisper threads. Must run before exiting: process
+/// teardown while the ggml Metal context is alive aborts in static destructors.
+pub fn shutdown(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    drop(state.mic_pipeline.lock().unwrap().take());
+    drop(state.system_pipeline.lock().unwrap().take());
+    drop(state.stt_engine.lock().unwrap().take());
+    let handle = state.stt_thread.lock().unwrap().take();
+    if let Some(handle) = handle {
+        // Bounded by the in-flight inference (~a second at most)
+        let _ = handle.join();
+    }
 }

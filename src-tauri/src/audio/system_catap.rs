@@ -42,10 +42,7 @@ extern "C" fn io_proc(
         let samples = unsafe {
             std::slice::from_raw_parts(buf.data as *const f32, buf.data_bytes_size as usize / 4)
         };
-        let n = ctx.producer.slots().min(samples.len());
-        for &s in &samples[..n] {
-            let _ = ctx.producer.push(s);
-        }
+        crate::audio::push_samples(&mut ctx.producer, samples);
     }
     os::Status::NO_ERR
 }

@@ -65,13 +65,7 @@ pub fn init_tray(app: &AppHandle) -> tauri::Result<()> {
                         Ok(path) => {
                             let _ = std::process::Command::new("open").args(["-R", &path]).spawn();
                         }
-                        Err(e) => {
-                            let _ = tauri::Emitter::emit(
-                                &app,
-                                "pipeline-error",
-                                crate::events::PipelineErrorEvent { message: e },
-                            );
-                        }
+                        Err(e) => crate::events::emit_pipeline_error(&app, e),
                     }
                 });
             }
@@ -79,17 +73,7 @@ pub fn init_tray(app: &AppHandle) -> tauri::Result<()> {
                 let _ = crate::commands::show_settings(app.clone());
             }
             "quit" => {
-                // Shut down the audio/whisper threads BEFORE exiting: process
-                // teardown while the ggml Metal context is alive calls abort()
-                // in static destructors (crash-on-quit).
-                let state = app.state::<AppState>();
-                drop(state.mic_pipeline.lock().unwrap().take());
-                drop(state.system_pipeline.lock().unwrap().take());
-                drop(state.stt_engine.lock().unwrap().take());
-                if let Some(handle) = state.stt_thread.lock().unwrap().take() {
-                    // Bounded by the in-flight inference (~a second at most)
-                    let _ = handle.join();
-                }
+                crate::commands::shutdown(app);
                 app.exit(0);
             }
             _ => {}

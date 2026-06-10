@@ -37,11 +37,7 @@ pub fn start(
                     .build_input_stream(
                         config,
                         move |data: &[f32], _info| {
-                            // If the buffer is full, drop old audio instead of blocking
-                            let n = producer.slots().min(data.len());
-                            for &sample in &data[..n] {
-                                let _ = producer.push(sample);
-                            }
+                            crate::audio::push_samples(&mut producer, data);
                         },
                         |err| eprintln!("mic stream error: {err}"),
                         None,
