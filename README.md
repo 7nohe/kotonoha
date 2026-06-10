@@ -83,6 +83,26 @@ Permissions then persist across rebuilds.
 - The screencapturekit crate embeds a Swift bridge, so the binary needs an rpath to `/usr/lib/swift` (`build.rs`)
 - In dev builds the native whisper/DSP crates are compiled with `opt-level = 3` — debug-level optimization is too slow for realtime audio
 
+## Releasing
+
+Pushing a `v*` tag triggers the [release workflow](.github/workflows/release.yml), which builds a `.dmg` on an Apple Silicon runner and attaches it to a **draft** GitHub Release:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Review the draft on the Releases page and publish it.
+
+Without any secrets configured the artifact is ad-hoc signed (users must right-click → Open on first launch). For signed & notarized builds, set these repository secrets:
+
+| Secret | Value |
+|---|---|
+| `APPLE_CERTIFICATE` | base64-encoded `.p12` of a "Developer ID Application" certificate |
+| `APPLE_CERTIFICATE_PASSWORD` | password of the `.p12` |
+| `APPLE_SIGNING_IDENTITY` | e.g. `Developer ID Application: Your Name (TEAMID)` |
+| `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` | Apple ID, app-specific password, and team ID for notarization |
+
 ## License
 
 [MIT](./LICENSE)

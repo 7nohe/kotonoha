@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # Apple Silicon runner (the app is macOS/arm64 only: Metal, ScreenCaptureKit, NSPanel)
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build and create draft release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Optional code signing & notarization — leave the secrets unset to
+          # build ad-hoc signed artifacts (users must right-click → Open).
+          # APPLE_CERTIFICATE: base64-encoded .p12 (Developer ID Application)
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          # Notarization (App Store Connect API key or Apple ID)
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "kotonoha ${{ github.ref_name }}"
+          releaseBody: |
+            Fully-local realtime transcription & translation overlay for macOS.
+
+            **Requirements**: macOS 13.3+ (Apple Silicon). Ollama is optional (needed for translation/summaries).
+
+            ---
+            _Built automatically from tag `${{ github.ref_name }}`._
+          releaseDraft: true
+          prerelease: false
+          args: --bundles dmg

@@ -83,6 +83,26 @@ export APPLE_SIGNING_IDENTITY="Apple Development: Your Name (TEAMID)"
 - screencapturekit crate は Swift ブリッジを含むため、バイナリに `/usr/lib/swift` への rpath が必要です (`build.rs`)
 - dev ビルドでも whisper / DSP 系クレートは `opt-level = 3` でコンパイルします(デバッグ最適化ではリアルタイム音声処理に間に合いません)
 
+## リリース
+
+`v*` タグを push すると[リリースワークフロー](.github/workflows/release.yml)が起動し、Apple Silicon ランナーで `.dmg` をビルドして**ドラフト**の GitHub Release に添付します:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Releases ページでドラフトを確認して公開してください。
+
+secrets 未設定でも動作します(成果物は ad-hoc 署名となり、初回起動時に右クリック→開くが必要)。署名・公証済みビルドにする場合は、以下のリポジトリ secrets を設定します:
+
+| Secret | 値 |
+|---|---|
+| `APPLE_CERTIFICATE` | "Developer ID Application" 証明書の `.p12` を base64 化したもの |
+| `APPLE_CERTIFICATE_PASSWORD` | `.p12` のパスワード |
+| `APPLE_SIGNING_IDENTITY` | 例: `Developer ID Application: Your Name (TEAMID)` |
+| `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` | 公証用の Apple ID・アプリ用パスワード・チーム ID |
+
 ## ライセンス
 
 [MIT](./LICENSE)
