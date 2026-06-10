@@ -31,6 +31,10 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Install App Store Connect API key for notarization
+        if: ${{ secrets.APPLE_API_KEY_BASE64 != '' }}
+        run: echo "${{ secrets.APPLE_API_KEY_BASE64 }}" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+
       - name: Build and create draft release
         uses: tauri-apps/tauri-action@v0
         env:
@@ -41,7 +45,12 @@ jobs:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          # Notarization (App Store Connect API key or Apple ID)
+          # Notarization — either method works; the API key is preferred for CI
+          # (a) App Store Connect API key (recommended, 2FA-independent)
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_PATH: ${{ secrets.APPLE_API_KEY != '' && format('{0}/AuthKey.p8', runner.temp) || '' }}
+          # (b) Apple ID + app-specific password
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}

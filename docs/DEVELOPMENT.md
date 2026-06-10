@@ -90,7 +90,8 @@ Without secrets the artifact is ad-hoc signed. For signed & notarized builds, se
 | `APPLE_CERTIFICATE` | base64-encoded `.p12` of a "Developer ID Application" certificate |
 | `APPLE_CERTIFICATE_PASSWORD` | password of the `.p12` |
 | `APPLE_SIGNING_IDENTITY` | e.g. `Developer ID Application: Your Name (TEAMID)` |
-| `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` | Apple ID, app-specific password, and team ID for notarization |
+| `APPLE_API_ISSUER` / `APPLE_API_KEY` / `APPLE_API_KEY_BASE64` | Notarization (preferred): App Store Connect API key issuer ID, key ID, and base64 of the `.p8` |
+| `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` | Notarization (alternative): Apple ID, app-specific password, team ID |
 
 ## Design assets
 
