@@ -32,8 +32,16 @@ jobs:
         run: npm ci
 
       - name: Install App Store Connect API key for notarization
-        if: ${{ secrets.APPLE_API_KEY_BASE64 != '' }}
-        run: echo "${{ secrets.APPLE_API_KEY_BASE64 }}" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+        # secrets are not allowed in step `if:` conditions — guard inside the script
+        env:
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+        run: |
+          if [ -n "$APPLE_API_KEY_BASE64" ]; then
+            echo "$APPLE_API_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+            echo "App Store Connect API key installed"
+          else
+            echo "No API key secret set — skipping"
+          fi
 
       - name: Build and create draft release
         uses: tauri-apps/tauri-action@v0
