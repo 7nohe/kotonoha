@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   onCaptureState,
+  onOverlayPassthrough,
   onPipelineError,
   onTranscript,
   onTranslation,
   setClickThrough,
+  setInteractiveRegion,
   showSettings,
   startCapture,
   stopCapture,
@@ -21,7 +23,13 @@ export default function Overlay() {
   const [idle, setIdle] = useState(true);
   const [recording, setRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
+  // Hover state driven by JS (not CSS :hover): once the window starts
+  // ignoring mouse events the webview never receives mouseleave, so the
+  // backend tells us via overlay-passthrough when to drop it
+  const [hot, setHot] = useState(false);
   const lastActivityRef = useRef(0);
+  const pillRef = useRef<HTMLDivElement | null>(null);
 
   const touch = useCallback(() => {
     lastActivityRef.current = Date.now();
@@ -84,11 +92,34 @@ export default function Overlay() {
       onTranslation(applyTranslation),
       onPipelineError((message) => setError(message)),
       onCaptureState(setRecording),
+      onOverlayPassthrough((ignored) => {
+        if (ignored) setHot(false);
+      }),
     ];
     return () => {
       unlisteners.forEach((p) => p.then((un) => un()));
     };
   }, [applyTranscript, applyTranslation]);
+
+  // Report the pill's bounds so the backend can pass clicks outside it
+  // through to the apps underneath (cursor hit-testing in overlay.rs)
+  useEffect(() => {
+    const el = pillRef.current;
+    if (!el) return;
+    // offset* ignores the idle scale() transform, unlike getBoundingClientRect
+    const report = () => {
+      void setInteractiveRegion({
+        x: el.offsetLeft,
+        y: el.offsetTop,
+        width: el.offsetWidth,
+        height: el.offsetHeight,
+      });
+    };
+    report();
+    const observer = new ResizeObserver(report);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -116,49 +147,74 @@ export default function Overlay() {
   };
 
   return (
-    <div className="overlay-root">
+    <div
+      className={`overlay-root ${hot ? "hot" : ""}`}
+      onMouseEnter={() => setHot(true)}
+      onMouseLeave={() => setHot(false)}
+    >
       <div
-        className={`pill ${idle ? "idle" : ""} ${error ? "has-error" : ""}`}
+        ref={pillRef}
+        className={`pill ${idle ? "idle" : ""} ${error ? "has-error" : ""} ${collapsed ? "collapsed" : ""}`}
         data-tauri-drag-region
       >
-        <div className="toolbar">
-          <button
-            className={`tool ${recording ? "tool-active" : ""}`}
-            title={recording ? "キャプチャ停止" : "キャプチャ開始"}
-            onClick={toggleRecording}
-          >
-            <span className={`rec-dot ${recording ? "on" : ""}`} />
-          </button>
-          <button
-            className="tool"
-            title="クリックスルー (解除はメニューバーの kotonoha から)"
-            onClick={enableClickThrough}
-          >
-            ◎
-          </button>
-          <button className="tool" title="設定" onClick={() => void showSettings()}>
-            ⚙
-          </button>
-          <span className="tool grip" title="ドラッグで移動" data-tauri-drag-region>
-            ⠿
-          </span>
-        </div>
-
-        {captions.length === 0 ? (
-          <div className="empty-hint" title={error ?? undefined}>
-            <span className={`rec-dot ${recording ? "on" : ""}`} />
-            {error
-              ? "エラー — ホバーで詳細を表示"
-              : recording
-                ? "待機中 — 音声を検出すると字幕が表示されます"
-                : "停止中 — ホバーして ⏺ で開始"}
+        {collapsed ? (
+          <div className="chip-row">
+            <span className="tool grip" title="ドラッグで移動" data-tauri-drag-region>
+              ⠿
+            </span>
+            <button
+              className="tool"
+              title="元のサイズに戻す"
+              onClick={() => setCollapsed(false)}
+            >
+              <span className={`rec-dot ${recording ? "on" : ""}`} />
+            </button>
           </div>
         ) : (
-          <div className="captions" title={error ?? undefined}>
-            {captions.map((c) => (
-              <CaptionRow key={c.utteranceId} caption={c} />
-            ))}
-          </div>
+          <>
+            <div className="toolbar">
+              <button
+                className={`tool ${recording ? "tool-active" : ""}`}
+                title={recording ? "キャプチャ停止" : "キャプチャ開始"}
+                onClick={toggleRecording}
+              >
+                <span className={`rec-dot ${recording ? "on" : ""}`} />
+              </button>
+              <button
+                className="tool"
+                title="クリックスルー (解除はメニューバーの kotonoha から)"
+                onClick={enableClickThrough}
+              >
+                ◎
+              </button>
+              <button className="tool" title="設定" onClick={() => void showSettings()}>
+                ⚙
+              </button>
+              <button className="tool" title="縮小" onClick={() => setCollapsed(true)}>
+                −
+              </button>
+              <span className="tool grip" title="ドラッグで移動" data-tauri-drag-region>
+                ⠿
+              </span>
+            </div>
+
+            {captions.length === 0 ? (
+              <div className="empty-hint" title={error ?? undefined}>
+                <span className={`rec-dot ${recording ? "on" : ""}`} />
+                {error
+                  ? "エラー — ホバーで詳細を表示"
+                  : recording
+                    ? "待機中 — 音声を検出すると字幕が表示されます"
+                    : "停止中 — ホバーして ⏺ で開始"}
+              </div>
+            ) : (
+              <div className="captions" title={error ?? undefined}>
+                {captions.map((c) => (
+                  <CaptionRow key={c.utteranceId} caption={c} />
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

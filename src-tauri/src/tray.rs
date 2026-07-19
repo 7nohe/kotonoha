@@ -58,16 +58,7 @@ pub fn init_tray(app: &AppHandle) -> tauri::Result<()> {
             }
             "export" | "export_summary" => {
                 let with_summary = event.id().as_ref() == "export_summary";
-                let app = app.clone();
-                tauri::async_runtime::spawn(async move {
-                    match crate::commands::export_transcript(app.clone(), with_summary).await {
-                        // Reveal the exported Markdown in Finder
-                        Ok(path) => {
-                            let _ = std::process::Command::new("open").args(["-R", &path]).spawn();
-                        }
-                        Err(e) => crate::events::emit_pipeline_error(&app, e),
-                    }
-                });
+                crate::commands::export_and_reveal(app.clone(), with_summary);
             }
             "settings" => {
                 let _ = crate::commands::show_settings(app.clone());

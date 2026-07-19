@@ -172,6 +172,45 @@
   cursor: default;
 }
 
+/* ---- Stored sessions ---- */
+.session-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.session-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 0;
+  font-size: 13px;
+}
+
+.session-title {
+  color: rgba(255, 255, 255, 0.75);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.action.danger {
+  background: rgba(248, 113, 113, 0.16);
+  color: #fca5a5;
+}
+
+.action.danger:hover {
+  background: rgba(248, 113, 113, 0.28);
+}
+
 .progress {
   width: 140px;
   height: 6px;

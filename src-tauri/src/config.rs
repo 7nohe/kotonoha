@@ -10,6 +10,16 @@ pub enum Direction {
     EnJa,
 }
 
+/// What to export automatically when capture stops
+#[derive(Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AutoExport {
+    #[default]
+    Off,
+    Transcript,
+    Summary,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Config {
@@ -17,6 +27,7 @@ pub struct Config {
     pub ollama_model: Option<String>,
     pub mic_enabled: bool,
     pub system_enabled: bool,
+    pub auto_export: AutoExport,
 }
 
 impl Default for Config {
@@ -26,6 +37,7 @@ impl Default for Config {
             ollama_model: None,
             mic_enabled: true,
             system_enabled: true,
+            auto_export: AutoExport::Off,
         }
     }
 }

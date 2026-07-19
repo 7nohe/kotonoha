@@ -30,9 +30,23 @@
   transform: scale(0.97);
 }
 
-.pill:hover {
+/* Hover is JS-driven (.hot on the root): CSS :hover sticks once the window
+   starts ignoring mouse events, because mouseleave never arrives */
+.overlay-root.hot .pill {
   opacity: 1;
   transform: scale(1);
+}
+
+/* ---- Collapsed chip ---- */
+.pill.collapsed {
+  min-width: 0;
+  padding: 5px;
+}
+
+.chip-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
 /* ---- Caption rows ---- */
@@ -183,7 +197,7 @@
     transform 0.18s ease;
 }
 
-.overlay-root:hover .toolbar {
+.overlay-root.hot .toolbar {
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;

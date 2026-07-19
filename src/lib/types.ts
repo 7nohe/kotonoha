@@ -26,11 +26,31 @@ export interface TranslationEvent {
 
 export type Direction = "ja" | "en-ja";
 
+/** What to export automatically when capture stops */
+export type AutoExport = "off" | "transcript" | "summary";
+
 export interface Config {
   direction: Direction;
   ollamaModel: string | null;
   micEnabled: boolean;
   systemEnabled: boolean;
+  autoExport: AutoExport;
+}
+
+export interface SessionInfo {
+  /** File stem of the stored session, e.g. "20260719-140302" */
+  id: string;
+  startedAtMs: number;
+  endedAtMs: number;
+  utterances: number;
+}
+
+/** Overlay pill bounds (logical px, webview top-left origin) for cursor hit-testing */
+export interface InteractiveRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 export interface PermissionStatus {

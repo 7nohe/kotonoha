@@ -50,8 +50,8 @@ Key modules under `src-tauri/src/`:
 | `audio/` | mic (cpal), system (SCK), system_catap (Core Audio taps), resampler |
 | `stt/` | whisper engine thread, VAD segmenter, model catalog & downloads |
 | `translate/` | Ollama client (chat/streaming/summary), translation queue |
-| `overlay.rs` | NSPanel conversion, window level/collection behavior, positioning |
-| `history.rs` | Session transcript accumulation, Markdown export |
+| `overlay.rs` | NSPanel conversion, window level/collection behavior, positioning, cursor hit-testing (clicks outside the pill pass through) |
+| `history.rs` | Session transcript accumulation, JSONL write-through persistence (`app_data_dir/sessions/`), stored-session listing/export, Markdown export |
 
 ## Code signing during development
 

@@ -3,7 +3,9 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   Config,
   DownloadProgress,
+  InteractiveRegion,
   PermissionStatus,
+  SessionInfo,
   TranscriptEvent,
   TranslationEvent,
   WhisperModelInfo,
@@ -13,6 +15,10 @@ import type {
 
 export const setClickThrough = (enabled: boolean) =>
   invoke<void>("set_click_through", { enabled });
+
+/** Reports the overlay pill's bounds so clicks outside it pass through */
+export const setInteractiveRegion = (region: InteractiveRegion | null) =>
+  invoke<void>("set_interactive_region", { region });
 
 export const showSettings = () => invoke<void>("show_settings");
 
@@ -46,6 +52,13 @@ export const isOnboardingNeeded = () => invoke<boolean>("is_onboarding_needed");
 export const exportTranscript = (withSummary: boolean) =>
   invoke<string>("export_transcript", { withSummary });
 
+export const listSessions = () => invoke<SessionInfo[]>("list_sessions");
+
+export const exportSession = (id: string, withSummary: boolean) =>
+  invoke<string>("export_session", { id, withSummary });
+
+export const deleteSession = (id: string) => invoke<void>("delete_session", { id });
+
 // ---- Events ----
 
 const onEvent =
@@ -58,3 +71,4 @@ export const onTranslation = onEvent<TranslationEvent>("translation");
 export const onPipelineError = onEvent<string>("pipeline-error");
 export const onDownloadProgress = onEvent<DownloadProgress>("model-download-progress");
 export const onCaptureState = onEvent<boolean>("capture-state");
+export const onOverlayPassthrough = onEvent<boolean>("overlay-passthrough");

@@ -7,6 +7,9 @@ pub const EV_TRANSLATION: &str = "translation";
 pub const EV_CAPTURE_STATE: &str = "capture-state";
 pub const EV_PIPELINE_ERROR: &str = "pipeline-error";
 pub const EV_DOWNLOAD_PROGRESS: &str = "model-download-progress";
+/// Fired (payload: true) when the overlay window starts ignoring mouse events
+/// so the frontend can drop hover-driven UI that would otherwise stick
+pub const EV_OVERLAY_PASSTHROUGH: &str = "overlay-passthrough";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

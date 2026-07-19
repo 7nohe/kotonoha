@@ -1,7 +1,8 @@
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::config::Config;
+use crate::config::{AutoExport, Config};
 use crate::events::EV_CAPTURE_STATE;
+use crate::history::{self, HistoryEntry, SessionInfo};
 use crate::pipeline::PipelineParams;
 use crate::state::AppState;
 use crate::stt::models;
@@ -13,9 +14,7 @@ pub fn set_click_through(app: AppHandle, enabled: bool) -> Result<(), String> {
     let window = app
         .get_webview_window("overlay")
         .ok_or("overlay window not found")?;
-    window
-        .set_ignore_cursor_events(enabled)
-        .map_err(|e| e.to_string())?;
+    crate::overlay::apply_pass_through(&app, &window, enabled).map_err(|e| e.to_string())?;
 
     let state = app.state::<AppState>();
     state
@@ -23,6 +22,14 @@ pub fn set_click_through(app: AppHandle, enabled: bool) -> Result<(), String> {
         .store(enabled, std::sync::atomic::Ordering::Relaxed);
     crate::tray::sync_click_through_item(&app, enabled);
     Ok(())
+}
+
+/// Receives the overlay pill's bounds (logical px, webview top-left origin).
+/// The cursor hit-test poller (overlay.rs) uses it to pass clicks outside the
+/// pill through to apps underneath.
+#[tauri::command]
+pub fn set_interactive_region(app: AppHandle, region: Option<crate::overlay::InteractiveRegion>) {
+    *app.state::<AppState>().interactive_region.lock().unwrap() = region;
 }
 
 #[tauri::command]
@@ -111,24 +118,24 @@ pub fn is_onboarding_needed(app: AppHandle) -> bool {
     !models::is_ready(&app)
 }
 
-/// Exports the session history as a Markdown file in ~/Downloads and returns its path.
-/// With `with_summary`, prepends an Ollama-generated summary (key points / decisions / TODOs).
-#[tauri::command]
-pub async fn export_transcript(app: AppHandle, with_summary: bool) -> Result<String, String> {
-    // Extract everything needed up front so no state lock is held across awaits
-    let (body, plain, model) = {
-        let state = app.state::<AppState>();
-        if state.history.is_empty() {
-            return Err("書き出す発話がまだありません".into());
-        }
-        let model = state.config.lock().unwrap().ollama_model.clone();
-        (state.history.to_markdown(), state.history.to_plain_text(), model)
-    };
+/// Builds the export Markdown and writes it to ~/Downloads. Returns the path.
+/// The filename derives from the session start so re-exports overwrite their
+/// earlier copy instead of piling up; `-summary` keeps both variants apart.
+async fn export_entries(
+    app: &AppHandle,
+    entries: &[HistoryEntry],
+    with_summary: bool,
+) -> Result<String, String> {
+    let started: chrono::DateTime<chrono::Local> = entries
+        .first()
+        .ok_or("書き出す発話がまだありません")?
+        .time
+        .into();
 
-    let now = chrono::Local::now();
-    let mut md = format!("# ミーティング記録 {}\n\n", now.format("%Y-%m-%d %H:%M"));
+    let mut md = format!("# ミーティング記録 {}\n\n", started.format("%Y-%m-%d %H:%M"));
 
     if with_summary {
+        let model = app.state::<AppState>().config.lock().unwrap().ollama_model.clone();
         let model = match model {
             Some(m) => m,
             None => ollama::list_models()
@@ -137,36 +144,109 @@ pub async fn export_transcript(app: AppHandle, with_summary: bool) -> Result<Str
                 .next()
                 .ok_or("Ollama にモデルがありません")?,
         };
-        let summary = ollama::summarize(&model, &plain).await?;
+        let summary = ollama::summarize(&model, &history::to_plain_text(entries)).await?;
         md.push_str("## サマリ\n\n");
         md.push_str(&summary);
         md.push_str("\n\n## トランスクリプト\n\n");
     }
-    md.push_str(&body);
+    md.push_str(&history::to_markdown(entries));
 
     let dir = app
         .path()
         .download_dir()
         .map_err(|e| format!("Downloads フォルダが見つかりません: {e}"))?;
-    let path = dir.join(format!("kotonoha-{}.md", now.format("%Y%m%d-%H%M%S")));
+    let suffix = if with_summary { "-summary" } else { "" };
+    let path = dir.join(format!("kotonoha-{}{}.md", started.format("%Y%m%d-%H%M%S"), suffix));
     std::fs::write(&path, md).map_err(|e| e.to_string())?;
+    eprintln!("[export] wrote {}", path.display());
     Ok(path.to_string_lossy().into_owned())
+}
+
+/// Exports the current session's history as a Markdown file in ~/Downloads.
+/// With `with_summary`, prepends an Ollama-generated summary (key points / decisions / TODOs).
+#[tauri::command]
+pub async fn export_transcript(app: AppHandle, with_summary: bool) -> Result<String, String> {
+    let entries = app.state::<AppState>().history.snapshot();
+    export_entries(&app, &entries, with_summary).await
+}
+
+/// Fire-and-forget export of the current session: reveals the file in Finder
+/// on success, surfaces errors on the overlay. Shared by the tray menu and
+/// auto-export on stop.
+pub fn export_and_reveal(app: AppHandle, with_summary: bool) {
+    tauri::async_runtime::spawn(async move {
+        match export_transcript(app.clone(), with_summary).await {
+            Ok(path) => {
+                let _ = std::process::Command::new("open").args(["-R", &path]).spawn();
+            }
+            Err(e) => {
+                eprintln!("[export] export failed: {e}");
+                crate::events::emit_pipeline_error(&app, e);
+            }
+        }
+    });
+}
+
+/// Lists stored sessions (newest first) for the settings window
+#[tauri::command]
+pub fn list_sessions(app: AppHandle) -> Result<Vec<SessionInfo>, String> {
+    history::list_sessions(&app)
+}
+
+/// Exports a stored session (by id from `list_sessions`) as Markdown
+#[tauri::command]
+pub async fn export_session(app: AppHandle, id: String, with_summary: bool) -> Result<String, String> {
+    let entries = history::load_session(&app, &id)?;
+    export_entries(&app, &entries, with_summary).await
+}
+
+#[tauri::command]
+pub fn delete_session(app: AppHandle, id: String) -> Result<(), String> {
+    history::delete_session(&app, &id)
 }
 
 /// Starts the capture + transcription pipelines per the current config.
 /// Runs off the main thread: model loading and SCK enumeration are slow.
+/// Each user-initiated start opens a fresh session (config-change restarts go
+/// through `start_capture_impl` directly and keep the running session).
 #[tauri::command]
 pub async fn start_capture(app: AppHandle) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || start_capture_impl(&app))
-        .await
-        .map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        if !is_capturing(&app) {
+            let state = app.state::<AppState>();
+            // Persistence failing must not block a live meeting
+            if let Err(e) = state.history.rotate_session(&app) {
+                crate::events::emit_pipeline_error(&app, e);
+            }
+        }
+        start_capture_impl(&app)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
 pub async fn stop_capture(app: AppHandle) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || stop_capture_impl(&app))
-        .await
-        .map_err(|e| e.to_string())?
+    let was_capturing = is_capturing(&app);
+    {
+        let app = app.clone();
+        tauri::async_runtime::spawn_blocking(move || stop_capture_impl(&app))
+            .await
+            .map_err(|e| e.to_string())??;
+    }
+
+    // Auto-export runs only on a real user-initiated stop with something to
+    // export, never on the stop/start cycle set_config performs
+    if !was_capturing || app.state::<AppState>().history.is_empty() {
+        return Ok(());
+    }
+    let auto_export = app.state::<AppState>().config.lock().unwrap().auto_export;
+    match auto_export {
+        AutoExport::Off => {}
+        AutoExport::Transcript => export_and_reveal(app, false),
+        AutoExport::Summary => export_and_reveal(app, true),
+    }
+    Ok(())
 }
 
 fn start_capture_impl(app: &AppHandle) -> Result<(), String> {
