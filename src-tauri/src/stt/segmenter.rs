@@ -114,6 +114,9 @@ fn create_vad(model_path: &str) -> Result<WhisperVadContext, String> {
 /// Returns (any speech in the window, speech within the trailing SILENCE_END)
 fn detect(vad: &mut WhisperVadContext, window: &[f32]) -> (bool, bool) {
     let mut params = WhisperVadParams::new();
+    // Above the 0.5 default: ambient noise that sneaks past VAD makes whisper
+    // hallucinate repetition loops, which is worse than missing faint speech
+    params.set_threshold(0.6);
     params.set_min_silence_duration(100);
     params.set_min_speech_duration(150);
 

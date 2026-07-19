@@ -97,6 +97,9 @@ fn run(
             let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
             params.set_language(Some(job.language));
             params.set_n_threads(n_threads);
+            // No temperature fallback: on noisy input it retries the decode up to
+            // 6 times at rising temperatures, blowing realtime latency
+            params.set_temperature_inc(0.0);
             params.set_no_context(true);
             params.set_suppress_blank(true);
             params.set_suppress_nst(true);
@@ -107,10 +110,18 @@ fn run(
                 params.set_single_segment(true);
             }
 
+            // whisper always encodes a full 30s window (1500 frames, 50/s) no matter
+            // how short the input is; shrinking the encoder context to the actual
+            // audio length is the dominant speedup for short realtime segments.
+            let audio_ctx = (audio.len() / (TARGET_SAMPLE_RATE as usize / 50) + 64).min(1500);
+            params.set_audio_ctx(audio_ctx as i32);
+
+            let started = std::time::Instant::now();
             if let Err(e) = state.full(params, &audio) {
                 eprintln!("whisper inference failed: {e}");
                 continue;
             }
+            let elapsed_ms = started.elapsed().as_millis();
 
             let mut text = String::new();
             for segment in state.as_iter() {
@@ -126,10 +137,14 @@ fn run(
             if text.is_empty() {
                 continue;
             }
+            if is_repetitive(&text) {
+                eprintln!("[stt] dropped repetitive hallucination: {text}");
+                continue;
+            }
 
             let is_final = job.kind == JobKind::Final;
             eprintln!(
-                "[stt] {:?} {} ({:.1}s audio): {}",
+                "[stt] {:?} {} ({:.1}s audio, {elapsed_ms}ms): {}",
                 job.source,
                 if is_final { "final" } else { "partial" },
                 audio.len() as f32 / TARGET_SAMPLE_RATE as f32,
@@ -163,6 +178,18 @@ fn run(
     }
 }
 
+/// Detects the degenerate repetition loops whisper produces on noise/silence:
+/// when a short phrase repeats, the ratio of distinct character trigrams
+/// collapses, while natural speech (Japanese or English) stays well above 0.5.
+fn is_repetitive(text: &str) -> bool {
+    let chars: Vec<char> = text.chars().collect();
+    if chars.len() < 24 {
+        return false;
+    }
+    let distinct: std::collections::HashSet<&[char]> = chars.windows(3).collect();
+    (distinct.len() as f32) < (chars.len() - 2) as f32 * 0.45
+}
+
 /// Keeps only the latest partial per utterance; finals are always kept and
 /// processed first to minimize the latency of finalized captions.
 /// (Utterance ids are globally unique and each source sends its jobs in order,
@@ -185,4 +212,28 @@ fn coalesce(jobs: Vec<TranscribeJob>) -> Vec<TranscribeJob> {
 
     finals.extend(latest_partial.into_values());
     finals
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_repetitive;
+
+    #[test]
+    fn repetition_loops_are_dropped() {
+        // Real hallucinations observed on ambient-noise input
+        assert!(is_repetitive(
+            "I'm just a lot. I'm just I'm just a lot. I'm just a lot. I'm just a lot."
+        ));
+        assert!(is_repetitive(
+            "I just, I just I just I just... I just... I just... I just..."
+        ));
+        assert!(is_repetitive("そうですねそうですねそうですねそうですねそうですね"));
+    }
+
+    #[test]
+    fn natural_speech_is_kept() {
+        assert!(!is_repetitive("Let's review the quarterly roadmap. The activation rate improved."));
+        assert!(!is_repetitive("来週の定例までにオンボーディングの改善案をまとめておきます。"));
+        assert!(!is_repetitive("はい、はい。そうですね。")); // short → skipped
+    }
 }
