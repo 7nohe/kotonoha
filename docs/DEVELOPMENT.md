@@ -71,6 +71,7 @@ Permissions then persist across rebuilds.
 - **Swift rpath**: the screencapturekit crate embeds a Swift bridge; the binary needs an rpath to `/usr/lib/swift` (`build.rs`).
 - **Dev profile**: native whisper/DSP crates are compiled with `opt-level = 3` even in dev — debug-level optimization is too slow for realtime audio (`Cargo.toml` profile overrides).
 - **CATap vs SCK**: the Core Audio tap backend avoids the Screen Recording permission entirely (and macOS 15's periodic re-confirmation), but silently falls back to ScreenCaptureKit when tap creation fails. Which backend is active is logged as `[audio] system backend: ...`.
+- **CATap aggregate needs a sub-device**: macOS 26 rejects `AudioDeviceStart` on a tap-only aggregate device with `'nope'` even when the System Audio Recording permission is granted. The aggregate must list the output device in `kAudioAggregateDeviceSubDeviceListKey` (as Apple's AudioCap sample does) — `system_catap.rs`.
 
 ## Releasing
 

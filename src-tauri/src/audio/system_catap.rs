@@ -71,6 +71,13 @@ pub fn start(
                     .and_then(|d| d.uid())
                     .map_err(|e| format!("出力デバイス取得に失敗: {e:?}"))?;
                 let uuid = cf::Uuid::new().to_cf_string();
+                // macOS 26 rejects starting a tap-only aggregate device with 'nope';
+                // include the output device as a sub-device (matches Apple's AudioCap sample)
+                let sub_device = cf::DictionaryOf::with_keys_values(
+                    &[cidre::core_audio::sub_device_keys::uid()],
+                    &[output_uid.as_ref()],
+                );
+                let sub_devices = cf::ArrayOf::from_slice(&[sub_device.as_ref()]);
                 let dict = cf::DictionaryOf::with_keys_values(
                     &[
                         agg_keys::is_private(),
@@ -78,6 +85,7 @@ pub fn start(
                         agg_keys::tap_auto_start(),
                         agg_keys::name(),
                         agg_keys::main_sub_device(),
+                        agg_keys::sub_device_list(),
                         agg_keys::uid(),
                     ],
                     &[
@@ -86,6 +94,7 @@ pub fn start(
                         cf::Boolean::value_true(),
                         cf::str!(c"kotonoha-tap"),
                         &output_uid,
+                        sub_devices.as_ref(),
                         &uuid,
                     ],
                 );

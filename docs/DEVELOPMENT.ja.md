@@ -71,6 +71,7 @@ export APPLE_SIGNING_IDENTITY="Apple Development: Your Name (TEAMID)"
 - **Swift rpath**: screencapturekit crate は Swift ブリッジを含むため、バイナリに `/usr/lib/swift` への rpath が必要 (`build.rs`)
 - **dev プロファイル**: whisper / DSP 系ネイティブクレートは dev でも `opt-level = 3` — デバッグ最適化ではリアルタイム音声処理に間に合いません (`Cargo.toml` の profile overrides)
 - **CATap と SCK**: Core Audio tap バックエンドは画面収録権限(と macOS 15 の定期再確認)を完全に回避できますが、tap 作成に失敗すると ScreenCaptureKit に静かにフォールバックします。どちらが使われたかは `[audio] system backend: ...` ログで確認
+- **CATap の集約デバイスにはサブデバイスが必要**: macOS 26 では、tap だけの集約デバイスに対する `AudioDeviceStart` が(システムオーディオ録音の許可済みでも)`'nope'` で拒否されます。Apple の AudioCap サンプルと同様に、出力デバイスを `kAudioAggregateDeviceSubDeviceListKey` に含める必要があります (`system_catap.rs`)
 
 ## リリース
 
