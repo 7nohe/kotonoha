@@ -39,4 +39,5 @@ npm run tauri icon app-icon.png                  # regenerate icon set (keeps ic
 
 - `.claude/skills/e2e-audio-check` — end-to-end check without a human speaker: play `say` TTS, watch `[stt]` log lines, screenshot the overlay, dump window state via CGWindowList.
 - `.claude/skills/regen-icons` — regenerate app icon and tray glyph from `design/*.svg` (the render pipeline has non-obvious tooling traps).
+- `.claude/skills/debug-capture-permissions` — diagnose CATap→SCK fallback, unexpected Screen Recording prompts, and TCC denials (live TCC log decoding, reset procedure, known macOS 26 pitfalls).
 - An Ollama model is required for translation tests: `ollama pull qwen2.5:3b-instruct` and use the official Ollama.app (`brew install --cask ollama-app`); the brew *formula* ships without llama-server and returns HTTP 500 for every model.
