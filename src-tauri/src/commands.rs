@@ -14,7 +14,9 @@ pub fn set_click_through(app: AppHandle, enabled: bool) -> Result<(), String> {
     let window = app
         .get_webview_window("overlay")
         .ok_or("overlay window not found")?;
-    crate::overlay::apply_pass_through(&app, &window, enabled).map_err(|e| e.to_string())?;
+    window
+        .set_ignore_cursor_events(enabled)
+        .map_err(|e| e.to_string())?;
 
     let state = app.state::<AppState>();
     state
@@ -24,12 +26,11 @@ pub fn set_click_through(app: AppHandle, enabled: bool) -> Result<(), String> {
     Ok(())
 }
 
-/// Receives the overlay pill's bounds (logical px, webview top-left origin).
-/// The cursor hit-test poller (overlay.rs) uses it to pass clicks outside the
-/// pill through to apps underneath.
+/// Resizes the overlay window to hug the pill (size in logical px, reported
+/// by the frontend) so clicks outside the visible pill reach apps underneath
 #[tauri::command]
-pub fn set_interactive_region(app: AppHandle, region: Option<crate::overlay::InteractiveRegion>) {
-    *app.state::<AppState>().interactive_region.lock().unwrap() = region;
+pub fn set_overlay_content_size(app: AppHandle, width: f64, height: f64) -> Result<(), String> {
+    crate::overlay::resize_to_content(&app, width, height)
 }
 
 #[tauri::command]

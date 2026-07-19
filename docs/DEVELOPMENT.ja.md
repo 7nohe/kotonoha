@@ -50,7 +50,7 @@ system (CATap/SCK) ──┤
 | `audio/` | mic (cpal)、system (SCK)、system_catap (Core Audio taps)、リサンプラ |
 | `stt/` | whisper エンジンスレッド、VAD セグメンタ、モデルカタログ & ダウンロード |
 | `translate/` | Ollama クライアント (chat / ストリーミング / サマリ)、翻訳キュー |
-| `overlay.rs` | NSPanel 変換、ウィンドウレベル・collection behavior、配置、カーソルヒットテスト (pill 外のクリックは下へ透過) |
+| `overlay.rs` | NSPanel 変換、ウィンドウレベル・collection behavior、配置、コンテンツ追従リサイズ (ウィンドウが pill に密着するため pill 外のクリックは下のアプリに届く) |
 | `history.rs` | セッション発話履歴の蓄積、JSONL への逐次永続化 (`app_data_dir/sessions/`)、保存済みセッションの一覧・書き出し、Markdown エクスポート |
 
 ## 開発時のコード署名

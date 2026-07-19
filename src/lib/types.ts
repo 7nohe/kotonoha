@@ -45,14 +45,6 @@ export interface SessionInfo {
   utterances: number;
 }
 
-/** Overlay pill bounds (logical px, webview top-left origin) for cursor hit-testing */
-export interface InteractiveRegion {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
 export interface PermissionStatus {
   microphone: boolean;
   screenRecording: boolean;

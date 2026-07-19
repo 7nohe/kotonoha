@@ -6,7 +6,6 @@ use tauri::Wry;
 
 use crate::config::Config;
 use crate::history::History;
-use crate::overlay::InteractiveRegion;
 use crate::pipeline::PipelineHandle;
 use crate::stt::engine::SttEngine;
 use crate::translate::queue::TranslationQueue;
@@ -25,6 +24,4 @@ pub struct AppState {
     pub translation_queue: Mutex<Option<TranslationQueue>>,
     pub mic_pipeline: Mutex<Option<PipelineHandle>>,
     pub system_pipeline: Mutex<Option<PipelineHandle>>,
-    /// Pill bounds reported by the overlay; drives cursor pass-through (overlay.rs)
-    pub interactive_region: Mutex<Option<InteractiveRegion>>,
 }

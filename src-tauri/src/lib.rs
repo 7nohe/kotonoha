@@ -19,7 +19,7 @@ pub fn run() {
         .manage(state::AppState::default())
         .invoke_handler(tauri::generate_handler![
             commands::set_click_through,
-            commands::set_interactive_region,
+            commands::set_overlay_content_size,
             commands::show_settings,
             commands::start_capture,
             commands::stop_capture,
@@ -52,7 +52,6 @@ pub fn run() {
 
             tray::init_tray(app.handle())?;
             overlay::init_overlay_panel(app.handle()).map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
-            overlay::start_cursor_hittest(app.handle());
 
             // On first launch (no model downloaded yet), open onboarding in the settings window
             if !stt::models::is_ready(app.handle()) {

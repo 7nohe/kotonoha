@@ -30,9 +30,7 @@
   transform: scale(0.97);
 }
 
-/* Hover is JS-driven (.hot on the root): CSS :hover sticks once the window
-   starts ignoring mouse events, because mouseleave never arrives */
-.overlay-root.hot .pill {
+.pill:hover {
   opacity: 1;
   transform: scale(1);
 }
@@ -56,9 +54,9 @@
   justify-content: flex-end;
   gap: 7px;
   /* Anchor to the bottom and clip overflowing old rows at the top with a fade,
-     so long captions never get sheared off by the window edge. The fade zone
-     equals the top padding: with fitting content it only covers empty space. */
-  max-height: calc(100vh - 64px);
+     so tall caption stacks stay bounded. Fixed value: the window now sizes
+     itself to the pill, so viewport units would feed back into the layout. */
+  max-height: 240px;
   overflow: hidden;
   padding-top: 20px;
   mask-image: linear-gradient(to bottom, transparent 0, black 20px);
@@ -197,7 +195,7 @@
     transform 0.18s ease;
 }
 
-.overlay-root.hot .toolbar {
+.overlay-root:hover .toolbar {
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;

@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   onCaptureState,
-  onOverlayPassthrough,
   onPipelineError,
   onTranscript,
   onTranslation,
   setClickThrough,
-  setInteractiveRegion,
+  setOverlayContentSize,
   showSettings,
   startCapture,
   stopCapture,
@@ -24,10 +23,6 @@ export default function Overlay() {
   const [recording, setRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
-  // Hover state driven by JS (not CSS :hover): once the window starts
-  // ignoring mouse events the webview never receives mouseleave, so the
-  // backend tells us via overlay-passthrough when to drop it
-  const [hot, setHot] = useState(false);
   const lastActivityRef = useRef(0);
   const pillRef = useRef<HTMLDivElement | null>(null);
 
@@ -92,28 +87,20 @@ export default function Overlay() {
       onTranslation(applyTranslation),
       onPipelineError((message) => setError(message)),
       onCaptureState(setRecording),
-      onOverlayPassthrough((ignored) => {
-        if (ignored) setHot(false);
-      }),
     ];
     return () => {
       unlisteners.forEach((p) => p.then((un) => un()));
     };
   }, [applyTranscript, applyTranslation]);
 
-  // Report the pill's bounds so the backend can pass clicks outside it
-  // through to the apps underneath (cursor hit-testing in overlay.rs)
+  // Report the pill's size so the backend keeps the window hugging it —
+  // clicks outside the visible pill then reach the apps underneath
   useEffect(() => {
     const el = pillRef.current;
     if (!el) return;
     // offset* ignores the idle scale() transform, unlike getBoundingClientRect
     const report = () => {
-      void setInteractiveRegion({
-        x: el.offsetLeft,
-        y: el.offsetTop,
-        width: el.offsetWidth,
-        height: el.offsetHeight,
-      });
+      void setOverlayContentSize(el.offsetWidth, el.offsetHeight);
     };
     report();
     const observer = new ResizeObserver(report);
@@ -147,11 +134,7 @@ export default function Overlay() {
   };
 
   return (
-    <div
-      className={`overlay-root ${hot ? "hot" : ""}`}
-      onMouseEnter={() => setHot(true)}
-      onMouseLeave={() => setHot(false)}
-    >
+    <div className="overlay-root">
       <div
         ref={pillRef}
         className={`pill ${idle ? "idle" : ""} ${error ? "has-error" : ""} ${collapsed ? "collapsed" : ""}`}
