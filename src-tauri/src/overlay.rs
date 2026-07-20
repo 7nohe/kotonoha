@@ -1,3 +1,5 @@
+use std::sync::Mutex;
+
 use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager};
 use tauri_nspanel::{tauri_panel, CollectionBehavior, PanelLevel, StyleMask, WebviewWindowExt};
 
@@ -80,10 +82,21 @@ const PAD_X: f64 = 12.0;
 const PAD_TOP: f64 = 8.0;
 const PAD_BOTTOM: f64 = 14.0;
 
+/// Serializes resize_to_content calls. The frontend's ResizeObserver fires
+/// (and invokes) without waiting for the previous call to finish — e.g.
+/// collapsing then immediately expanding — and set_size/set_position are two
+/// separate round trips. Without this lock, a second call can read the
+/// window's geometry between the first call's set_size and set_position,
+/// computing from a half-applied state and leaving the window's actual
+/// frame drifted from where the pill is drawn, so clicks miss it entirely.
+static RESIZE_LOCK: Mutex<()> = Mutex::new(());
+
 /// Resizes the overlay window to fit the pill (logical px, reported by the
 /// frontend's ResizeObserver), keeping the bottom-center anchor fixed so the
 /// pill doesn't visually move when captions grow or shrink.
 pub fn resize_to_content(app: &AppHandle, pill_width: f64, pill_height: f64) -> Result<(), String> {
+    let _guard = RESIZE_LOCK.lock().unwrap();
+
     let window = app
         .get_webview_window("overlay")
         .ok_or("overlay window not found")?;
