@@ -1,6 +1,6 @@
 [package]
 name = "kotonoha"
-version = "0.1.4"
+version = "0.1.5"
 description = "Fully-local realtime transcription & translation overlay for macOS"
 authors = ["7nohe"]
 edition = "2021"
