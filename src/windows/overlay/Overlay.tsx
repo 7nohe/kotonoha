@@ -24,7 +24,7 @@ export default function Overlay() {
   const [error, setError] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const lastActivityRef = useRef(0);
-  const pillRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
 
   const touch = useCallback(() => {
     lastActivityRef.current = Date.now();
@@ -93,12 +93,12 @@ export default function Overlay() {
     };
   }, [applyTranscript, applyTranslation]);
 
-  // Report the pill's size so the backend keeps the window hugging it —
-  // clicks outside the visible pill then reach the apps underneath
+  // Report the content size (toolbar row + pill) so the backend keeps the
+  // window hugging it — clicks outside the visible UI reach apps underneath
   useEffect(() => {
-    const el = pillRef.current;
+    const el = contentRef.current;
     if (!el) return;
-    // offset* ignores the idle scale() transform, unlike getBoundingClientRect
+    // offset* ignores the pill's idle scale() transform, unlike getBoundingClientRect
     const report = () => {
       void setOverlayContentSize(el.offsetWidth, el.offsetHeight);
     };
@@ -135,70 +135,68 @@ export default function Overlay() {
 
   return (
     <div className="overlay-root">
-      <div
-        ref={pillRef}
-        className={`pill ${idle ? "idle" : ""} ${error ? "has-error" : ""} ${collapsed ? "collapsed" : ""}`}
-        data-tauri-drag-region
-      >
-        {collapsed ? (
-          <div className="chip-row">
-            <span className="tool grip" title="ドラッグで移動" data-tauri-drag-region>
-              ⠿
-            </span>
+      <div ref={contentRef} className="overlay-content">
+        {!collapsed && (
+          <div className="toolbar">
             <button
-              className="tool"
-              title="元のサイズに戻す"
-              onClick={() => setCollapsed(false)}
+              className={`tool ${recording ? "tool-active" : ""}`}
+              title={recording ? "キャプチャ停止" : "キャプチャ開始"}
+              onClick={toggleRecording}
             >
               <span className={`rec-dot ${recording ? "on" : ""}`} />
             </button>
+            <button
+              className="tool"
+              title="クリックスルー (解除はメニューバーの kotonoha から)"
+              onClick={enableClickThrough}
+            >
+              ◎
+            </button>
+            <button className="tool" title="設定" onClick={() => void showSettings()}>
+              ⚙
+            </button>
+            <button className="tool" title="縮小" onClick={() => setCollapsed(true)}>
+              −
+            </button>
+            <span className="tool grip" title="ドラッグで移動" data-tauri-drag-region>
+              ⠿
+            </span>
           </div>
-        ) : (
-          <>
-            <div className="toolbar">
-              <button
-                className={`tool ${recording ? "tool-active" : ""}`}
-                title={recording ? "キャプチャ停止" : "キャプチャ開始"}
-                onClick={toggleRecording}
-              >
-                <span className={`rec-dot ${recording ? "on" : ""}`} />
-              </button>
-              <button
-                className="tool"
-                title="クリックスルー (解除はメニューバーの kotonoha から)"
-                onClick={enableClickThrough}
-              >
-                ◎
-              </button>
-              <button className="tool" title="設定" onClick={() => void showSettings()}>
-                ⚙
-              </button>
-              <button className="tool" title="縮小" onClick={() => setCollapsed(true)}>
-                −
-              </button>
+        )}
+        <div
+          className={`pill ${idle ? "idle" : ""} ${error ? "has-error" : ""} ${collapsed ? "collapsed" : ""}`}
+          data-tauri-drag-region
+        >
+          {collapsed ? (
+            <div className="chip-row">
               <span className="tool grip" title="ドラッグで移動" data-tauri-drag-region>
                 ⠿
               </span>
-            </div>
-
-            {captions.length === 0 ? (
-              <div className="empty-hint" title={error ?? undefined}>
+              <button
+                className="tool"
+                title="元のサイズに戻す"
+                onClick={() => setCollapsed(false)}
+              >
                 <span className={`rec-dot ${recording ? "on" : ""}`} />
-                {error
-                  ? "エラー — ホバーで詳細を表示"
-                  : recording
-                    ? "待機中 — 音声を検出すると字幕が表示されます"
-                    : "停止中 — ホバーして ⏺ で開始"}
-              </div>
-            ) : (
-              <div className="captions" title={error ?? undefined}>
-                {captions.map((c) => (
-                  <CaptionRow key={c.utteranceId} caption={c} />
-                ))}
-              </div>
-            )}
-          </>
-        )}
+              </button>
+            </div>
+          ) : captions.length === 0 ? (
+            <div className="empty-hint" title={error ?? undefined}>
+              <span className={`rec-dot ${recording ? "on" : ""}`} />
+              {error
+                ? "エラー — ホバーで詳細を表示"
+                : recording
+                  ? "待機中 — 音声を検出すると字幕が表示されます"
+                  : "停止中 — ホバーして ⏺ で開始"}
+            </div>
+          ) : (
+            <div className="captions" title={error ?? undefined}>
+              {captions.map((c) => (
+                <CaptionRow key={c.utteranceId} caption={c} />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
